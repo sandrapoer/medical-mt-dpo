@@ -3,7 +3,7 @@ import os
 import json
 
 load_dotenv()
-processed_path = os.getenv("DATA_PROCESSED_DIR")
+processed_path = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 
 # Instruction Template
 INSTRUCTION_TEMPLATE = """
@@ -18,21 +18,39 @@ def format_pair(en, fr):
         tgt="French",
         source=en.strip(),
     )
-    return {"prompt": prompt, "completion": fr.strip()}
+    return {
+        "messages": [
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": fr.strip()}
+        ]
+    }
 
-# Load Data
-with open(f"{processed_path}/val/val.en") as f:
-    train_en = f.readlines()
-with open(f"{processed_path}/val/val.fr") as f:
-    train_fr = f.readlines()
+def format_split(src_file, tgt_file, out_file):
+    with open(src_file, encoding="utf-8") as f:
+        en_lines = f.readlines()
+    with open(tgt_file, encoding="utf-8") as f:
+        fr_lines = f.readlines()
 
-# Format Data
-formatted_data = [format_pair(en, fr) for en, fr in zip(train_en, train_fr)]
+    formatted = [format_pair(en, fr) for en, fr in zip(en_lines, fr_lines)]
 
-with open(f"{processed_path}/val/formatted_val.jsonl", "w") as f:
-    for item in formatted_data:
-        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    with open(out_file, "w", encoding="utf-8") as f:
+        for item in formatted:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-print(f"Formatted {len(formatted_data)} example pairs.")
-print(f"Formatted data saved to {processed_path}/val/formatted_val.json")
-print(formatted_data[0])
+    print(f"Formatted {len(formatted):,} pairs -> {out_file}")
+    print("Example:", formatted[0])
+    print()
+
+# Train
+format_split(
+    src_file=f"{processed_path}/train/train.en",
+    tgt_file=f"{processed_path}/train/train.fr",
+    out_file=f"{processed_path}/train/messages_train.jsonl",
+)
+
+# Val
+format_split(
+    src_file=f"{processed_path}/val/val.en",
+    tgt_file=f"{processed_path}/val/val.fr",
+    out_file=f"{processed_path}/val/messages_val.jsonl",
+)
