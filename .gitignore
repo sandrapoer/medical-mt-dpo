@@ -9,3 +9,6 @@ __pycache__/
 venv/
 
 MT-Preparation
+
+# Model and Checkpoints
+models/
