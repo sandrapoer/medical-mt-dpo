@@ -55,38 +55,6 @@ dataset = load_dataset(
     }
 )
 
-# Training Configuration
-training_args = SFTConfig(
-    disable_tqdm=False,
-    output_dir=OUTPUT_DIR,
-    num_train_epochs=3,
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=4,
-    gradient_accumulation_steps=4,
-    learning_rate=2e-4,
-    lr_scheduler_type="cosine",
-    warmup_steps=100,
-    bf16=True,
-    logging_steps=10,
-    eval_strategy="steps",
-    eval_steps=500,
-    save_strategy="steps",
-    save_steps=500,
-    save_total_limit=2,
-    load_best_model_at_end=True,
-    report_to="none",
-    dataset_text_field="messages",
-    max_length=512,
-)
-
-trainer = SFTTrainer(
-    model=model,
-    args=training_args,
-    train_dataset=dataset["train"],
-    eval_dataset=dataset["validation"],
-    processing_class=tokenizer,
-)
-
 class CompletionOnlyCollator:
     """Mask prompt tokens so loss is only computed on the French translation."""
     def __init__(self, tokenizer, response_template="<|im_start|>assistant\n"):
@@ -128,6 +96,31 @@ class CompletionOnlyCollator:
 
 
 collator = CompletionOnlyCollator(tokenizer)
+
+# Training Configuration
+training_args = SFTConfig(
+    disable_tqdm=False,
+    output_dir=OUTPUT_DIR,
+    num_train_epochs=3,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=4,
+    learning_rate=2e-4,
+    lr_scheduler_type="cosine",
+    warmup_steps=100,
+    bf16=True,
+    logging_steps=10,
+    eval_strategy="steps",
+    eval_steps=500,
+    save_strategy="steps",
+    save_steps=500,
+    save_total_limit=2,
+    load_best_model_at_end=True,
+    report_to="none",
+    dataset_text_field="messages",
+    max_length=512,
+)
+
 
 trainer = SFTTrainer(
     model=model,
