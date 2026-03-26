@@ -11,3 +11,4 @@ venv/
 # Model and Checkpoints
 models/
 MT-Preparation/
+model_cache/
