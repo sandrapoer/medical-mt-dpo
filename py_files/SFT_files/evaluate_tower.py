@@ -14,9 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from comet import download_model, load_from_checkpoint
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
+
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
@@ -24,12 +22,12 @@ MODELS_DIR     = os.getenv("MODELS_DIR").rstrip("/")
 BASE_MODEL     = "Unbabel/TowerInstruct-7B-v0.2"
 
 VAL_FILE    = f"{PROCESSED_PATH}/val/messages_val.jsonl"
-OUT_DIR     = f"{MODELS_DIR}/SFT_TowerInstruct_v0.2/eval_results"
+OUT_DIR     = f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores.json"
 
 CHECKPOINTS = {
-    "checkpoint-1000": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2/checkpoint-1000",
-    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2/checkpoint-1875",
+    "checkpoint-1250": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/checkpoint-1250",
+    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/checkpoint-1875",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
@@ -37,9 +35,8 @@ COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
 MAX_NEW_TOKENS = 256
 BATCH_SIZE     = 8
 
-# ---------------------------------------------------------------------------
+
 # Resume helpers
-# ---------------------------------------------------------------------------
 
 def load_existing_scores() -> dict:
     if os.path.exists(SCORES_FILE):
@@ -77,9 +74,8 @@ def save_scores(results: dict):
         json.dump(results, f, indent=2)
     print(f"  Scores saved to: {SCORES_FILE}")
 
-# ---------------------------------------------------------------------------
+
 # Data loading
-# ---------------------------------------------------------------------------
 
 def load_val_data(path: str):
     sources, references, prompts = [], [], []
@@ -108,9 +104,8 @@ def load_val_data(path: str):
 
     return sources, references, prompts
 
-# ---------------------------------------------------------------------------
+
 # Model loading & generation
-# ---------------------------------------------------------------------------
 
 def load_model_and_tokenizer(checkpoint_path: str):
     # Tokenizer always from base model — TowerInstruct's TokenizersBackend
@@ -170,9 +165,8 @@ def generate_translations(model, tokenizer, prompts: list) -> list:
 
     return hypotheses
 
-# ---------------------------------------------------------------------------
+
 # Metrics
-# ---------------------------------------------------------------------------
 
 def compute_bleu(hypotheses: list, references: list) -> float:
     result = sacrebleu.corpus_bleu(hypotheses, [references])
@@ -194,9 +188,8 @@ def compute_comet_da(sources: list, hypotheses: list, references: list) -> float
 
     return round(output.system_score, 4)
 
-# ---------------------------------------------------------------------------
+
 # Summary
-# ---------------------------------------------------------------------------
 
 def print_summary(results: dict):
     print("\n" + "=" * 50)
@@ -210,9 +203,8 @@ def print_summary(results: dict):
         print(f"{ckpt:<20} {str(bleu):>8} {str(comet_da):>10}")
     print("=" * 50)
 
-# ---------------------------------------------------------------------------
+
 # Main
-# ---------------------------------------------------------------------------
 
 def main():
     print("Loading validation data...")
@@ -228,7 +220,6 @@ def main():
 
         ckpt_scores = results.get(ckpt_name, {})
 
-        # --- Generation (skip if hypotheses already on disk) ---
         hypotheses = load_existing_hypotheses(ckpt_name)
         if hypotheses is None:
             model, tokenizer = load_model_and_tokenizer(ckpt_path)
@@ -249,7 +240,7 @@ def main():
         else:
             print(f"  BLEU already computed: {ckpt_scores['bleu']} — skipping.")
 
-        # --- COMET-DA (save immediately after) ---
+        # COMET-DA (save immediately after)
         if "comet_wmt22" not in ckpt_scores:
             print("  Computing COMET-DA (wmt22-comet-da)...")
             ckpt_scores["comet_wmt22"] = compute_comet_da(sources, hypotheses, references)
