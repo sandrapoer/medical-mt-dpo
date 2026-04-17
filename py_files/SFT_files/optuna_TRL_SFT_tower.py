@@ -3,25 +3,22 @@ import torch
 import optuna
 from dotenv import load_dotenv
 from datasets import load_dataset
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-    Trainer,
-    TrainingArguments,
-)
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import LoraConfig, prepare_model_for_kbit_training
+from trl import SFTTrainer, SFTConfig
 
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODEL_PATH     = os.getenv("MODELS_DIR").rstrip("/")
-BASE_MODEL     = "Unbabel/TowerInstruct-7B-v0.2"
-OUTPUT_DIR     = f"{MODEL_PATH}/optuna_tower"
-N_TRIALS       = 15
+MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
+BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
+OUTPUT_DIR = f"{MODEL_PATH}/optuna_tower_trl"
+N_TRIALS = 15
 
-tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, padding_side="left", trust_remote_code=True)
+
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
+tokenizer.padding_side = "right"
 
 dataset = load_dataset(
     "json",
@@ -31,14 +28,7 @@ dataset = load_dataset(
     }
 )
 
-def tokenize(example):
-    msgs = example["messages"]
-    user_msg = next(m for m in msgs if m["role"] == "user")
-    asst_msg = next(m for m in msgs if m["role"] == "assistant")
-    text = user_msg["content"].join(["<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]) + asst_msg["content"] + "<|im_end|>"
-    return tokenizer(text, truncation=True, max_length=512)
 
-tokenized = dataset.map(tokenize, remove_columns=dataset["train"].column_names)
 
 class CompletionOnlyCollator:
     def __init__(self, tokenizer, response_template="<|im_start|>assistant\n"):
@@ -50,7 +40,7 @@ class CompletionOnlyCollator:
         input_ids_list = [torch.tensor(x["input_ids"]) for x in batch]
         max_len = max(t.size(0) for t in input_ids_list)
         input_ids = torch.stack([
-            torch.nn.functional.pad(t, (max_len - t.size(0), 0), value=self.pad_token_id)
+            torch.nn.functional.pad(t, (0, max_len - t.size(0)), value=self.pad_token_id)
             for t in input_ids_list
         ])
         attention_mask = (input_ids != self.pad_token_id).long()
@@ -69,12 +59,15 @@ class CompletionOnlyCollator:
         labels[input_ids == self.pad_token_id] = -100
         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
+
+
 def objective(trial):
-    lr         = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
-    warmup     = trial.suggest_int("warmup_steps", 50, 200)
-    lora_r     = trial.suggest_categorical("lora_r", [8, 16, 32])
+    lr = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
+    warmup = trial.suggest_int("warmup_steps", 50, 200)
+    lora_r = trial.suggest_categorical("lora_r", [8, 16, 32])
     lora_alpha = trial.suggest_categorical("lora_alpha", [16, 32, 64])
-    trial_dir  = f"{OUTPUT_DIR}/trial_{trial.number}"
+
+    trial_dir = f"{OUTPUT_DIR}/trial_{trial.number}"
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -98,16 +91,15 @@ def objective(trial):
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(base_model, lora_config)
+
     collator = CompletionOnlyCollator(tokenizer)
 
-    training_args = TrainingArguments(
+    training_args = SFTConfig(
         output_dir=trial_dir,
         num_train_epochs=1,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=4,
         gradient_accumulation_steps=4,
-        eval_accumulation_steps=4,
         learning_rate=lr,
         warmup_steps=warmup,
         lr_scheduler_type="cosine",
@@ -117,14 +109,17 @@ def objective(trial):
         save_strategy="no",
         report_to="none",
         disable_tqdm=False,
+        dataset_text_field="messages",
+        max_length=512,
     )
 
-    trainer = Trainer(
-        model=model,
+    trainer = SFTTrainer(
+        model=base_model,
         args=training_args,
-        train_dataset=tokenized["train"],
-        eval_dataset=tokenized["validation"],
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["validation"],
         processing_class=tokenizer,
+        peft_config=lora_config,
         data_collator=collator,
     )
 
@@ -132,19 +127,23 @@ def objective(trial):
     eval_results = trainer.evaluate()
     eval_loss = eval_results["eval_loss"]
 
-    del model, base_model, trainer
+    del trainer
     torch.cuda.empty_cache()
 
     return eval_loss
 
+
+
+# Study
 if __name__ == "__main__":
     study = optuna.create_study(
         direction="minimize",
         sampler=optuna.samplers.TPESampler(seed=42),
-        study_name="tower_sft_optuna",
-        storage=f"sqlite:///{MODEL_PATH}/optuna_tower.db",
+        study_name="tower_sft_optuna_trl",
+        storage=f"sqlite:///{MODEL_PATH}/optuna_tower_trl.db",
         load_if_exists=True,
     )
+
     study.optimize(objective, n_trials=N_TRIALS)
 
     print("\nBest trial:")
