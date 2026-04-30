@@ -18,16 +18,17 @@ from comet import download_model, load_from_checkpoint
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODELS_DIR     = os.getenv("MODELS_DIR").rstrip("/")
-BASE_MODEL     = "Unbabel/TowerInstruct-7B-v0.2"
+MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
+BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
 
-VAL_FILE    = f"{PROCESSED_PATH}/val/messages_val.jsonl"
-OUT_DIR     = f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/eval_results"
+VAL_FILE = f"{PROCESSED_PATH}/val/messages_val.jsonl"
+OUT_DIR = f"{MODELS_DIR}/SFT_TowerInstruct_final/eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores.json"
 
 CHECKPOINTS = {
-    "checkpoint-1250": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/checkpoint-1250",
-    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_v0.2_loss/checkpoint-1875",
+    "checkpoint-625": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-625",
+    "checkpoint-1250": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1250",
+    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1875",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
