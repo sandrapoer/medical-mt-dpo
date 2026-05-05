@@ -9,18 +9,22 @@ from tqdm import tqdm
 
 load_dotenv()
 
+# Start: Testing a few samples
+TEST_MODE = False
+
+
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
 # Path to your best SFT checkpoint
-SFT_MODEL_PATH = f"{MODEL_PATH}/SFT_TowerInstruct_final"
+SFT_MODEL_PATH = f"{MODEL_PATH}/SFT_TowerInstruct_final/checkpoint-1250"
 BASE_MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
 OUTPUT_FILE = f"{PROCESSED_PATH}/dpo/hypotheses.jsonl"
 NUM_HYPOTHESES = 8
 TEMPERATURE = 0.7
 TOP_P = 0.9
-MAX_NEW_TOKENS = 256
-BATCH_SIZE = 8
+MAX_NEW_TOKENS = 128
+BATCH_SIZE = 16 
 
 
 os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
@@ -59,18 +63,26 @@ dataset = load_dataset(
     split="train",
 )
 
+# Testing
+if TEST_MODE:
+    dataset = dataset.select(range(5))
+
+
+
 def build_prompt(example):
-    """Reconstruct the ChatML prompt from the messages field."""
+    # Reconstruct the ChatML prompt from the messages field
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     return f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n<|im_start|>assistant\n"
 
+
 def get_source(example):
-    """Extract raw source sentence for storing alongside hypotheses."""
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
-    # Source is the last line of the user message (after the instruction)
-    return user_msg["content"].split("\n")[-1].strip()
+    for line in user_msg["content"].split("\n"):
+        if line.startswith("English:"):
+            return line[len("English:"):].strip()
+    return ""
 
 # Generation
 completed = set()
@@ -116,6 +128,9 @@ for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
                 top_p=TOP_P,
                 num_return_sequences=NUM_HYPOTHESES,
                 pad_token_id=tokenizer.pad_token_id,
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=4,
+                eos_token_id=tokenizer.eos_token_id,
             )
 
         # outputs shape: (BATCH_SIZE * NUM_HYPOTHESES, seq_len)
@@ -130,6 +145,9 @@ for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
                 # Decode only the newly generated tokens, not the prompt
                 generated = outputs[idx][input_len:]
                 decoded = tokenizer.decode(generated, skip_special_tokens=True).strip()
+                # Truncate at first sentence end
+                if "." in decoded:
+                    decoded = decoded[:decoded.index(".") + 1].strip()
                 hyps.append(decoded)
 
             record = {
