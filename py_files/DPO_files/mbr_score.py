@@ -38,6 +38,8 @@ with open(INPUT_FILE, "r", encoding="utf-8") as f:
         if obj["source"] not in completed:
             records.append(obj)
 
+
+# records = records[:5]  # FOR TESTING
 print(f"{len(records)} examples to score.")
 
 outfile = open(OUTPUT_FILE, "a", encoding="utf-8")
