@@ -13,9 +13,9 @@ MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
 BASE_MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
 SFT_CHECKPOINT = f"{MODEL_PATH}/SFT_TowerInstruct_final/checkpoint-1250"
-OUTPUT_DIR  = f"{MODEL_PATH}/DPO_TowerInstruct_beta0.01"
+OUTPUT_DIR  = f"{MODEL_PATH}/DPO_TowerInstruct_beta0.05"
 
-BETA = 0.01  # tuning later with 0.01, 0.05, 0.1, 0.5 ...
+BETA = 0.05  # tuning with 0.1 0.01, 0.05, 0.1, 0.5 ...
 
 
 tokenizer = AutoTokenizer.from_pretrained(
