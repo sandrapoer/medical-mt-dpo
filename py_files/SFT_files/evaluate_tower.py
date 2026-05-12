@@ -1,7 +1,7 @@
 '''
 COMET models used:
   - Unbabel/wmt22-comet-da (reference-based, standard for MT papers)
-  - Unbabel/wmt22-cometkiwi-da (reference-free, QE signal)
+  - Unbabel/wmt22-cometkiwi-da (reference-free, QE signal) — skipped, requires COMET >= 2.3
 '''
 
 import os
@@ -23,7 +23,7 @@ BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
 
 VAL_FILE = f"{PROCESSED_PATH}/val/messages_val.jsonl"
 OUT_DIR = f"{MODELS_DIR}/SFT_TowerInstruct_final/eval_results"
-SCORES_FILE = f"{OUT_DIR}/val_scores.json"
+SCORES_FILE = f"{OUT_DIR}/val_scores_full.json"
 
 CHECKPOINTS = {
     "checkpoint-625": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-625",
@@ -34,10 +34,8 @@ CHECKPOINTS = {
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
 
 MAX_NEW_TOKENS = 256
-BATCH_SIZE     = 8
+BATCH_SIZE = 8
 
-
-# Resume helpers
 
 def load_existing_scores() -> dict:
     if os.path.exists(SCORES_FILE):
@@ -76,8 +74,6 @@ def save_scores(results: dict):
     print(f"  Scores saved to: {SCORES_FILE}")
 
 
-# Data loading
-
 def load_val_data(path: str):
     sources, references, prompts = [], [], []
     with open(path, "r", encoding="utf-8") as f:
@@ -106,11 +102,7 @@ def load_val_data(path: str):
     return sources, references, prompts
 
 
-# Model loading & generation
-
 def load_model_and_tokenizer(checkpoint_path: str):
-    # Tokenizer always from base model — TowerInstruct's TokenizersBackend
-    # is not resolvable from checkpoint directories.
     print(f"  Loading tokenizer from base model: {BASE_MODEL}")
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
@@ -127,7 +119,7 @@ def load_model_and_tokenizer(checkpoint_path: str):
     base_model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL,
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map={"": 0},
         trust_remote_code=True,
     )
 
@@ -167,16 +159,19 @@ def generate_translations(model, tokenizer, prompts: list) -> list:
     return hypotheses
 
 
-# Metrics
-
 def compute_bleu(hypotheses: list, references: list) -> float:
     result = sacrebleu.corpus_bleu(hypotheses, [references])
     return round(result.score, 4)
 
 
+def compute_chrf(hypotheses: list, references: list) -> float:
+    result = sacrebleu.corpus_chrf(hypotheses, [references])
+    return round(result.score, 4)
+
+
 def compute_comet_da(sources: list, hypotheses: list, references: list) -> float:
     print(f"  Loading COMET model: {COMET_REF_MODEL}")
-    comet_path = download_model(COMET_REF_MODEL)
+    comet_path  = download_model(COMET_REF_MODEL)
     comet_model = load_from_checkpoint(comet_path)
 
     data = [{"src": s, "mt": h, "ref": r}
@@ -190,22 +185,21 @@ def compute_comet_da(sources: list, hypotheses: list, references: list) -> float
     return round(output.system_score, 4)
 
 
-# Summary
-
 def print_summary(results: dict):
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 65)
     print("  EVALUATION SUMMARY — Validation Set")
-    print("=" * 50)
-    print(f"{'Checkpoint':<20} {'BLEU':>8} {'COMET-DA':>10}")
-    print("-" * 50)
+    print("=" * 65)
+    print(f"{'Checkpoint':<20} {'BLEU':>8} {'ChrF':>8} {'COMET-DA':>10}")
+    print("-" * 65)
     for ckpt, scores in results.items():
         bleu     = scores.get("bleu", "—")
+        chrf     = scores.get("chrf", "—")
         comet_da = scores.get("comet_wmt22", "—")
-        print(f"{ckpt:<20} {str(bleu):>8} {str(comet_da):>10}")
-    print("=" * 50)
+        print(f"{ckpt:<20} {str(bleu):>8} {str(chrf):>8} {str(comet_da):>10}")
+    print("=" * 65)
+    print("\nNote: Paired bootstrap significance testing (BLEU + ChrF)")
+    print("to be run via sacrebleu CLI after all models are evaluated.")
 
-
-# Main
 
 def main():
     print("Loading validation data...")
@@ -231,7 +225,7 @@ def main():
         else:
             print("  Skipping generation.")
 
-        # --- BLEU (save immediately after) ---
+        # BLEU
         if "bleu" not in ckpt_scores:
             print("  Computing BLEU...")
             ckpt_scores["bleu"] = compute_bleu(hypotheses, references)
@@ -241,7 +235,17 @@ def main():
         else:
             print(f"  BLEU already computed: {ckpt_scores['bleu']} — skipping.")
 
-        # COMET-DA (save immediately after)
+        # ChrF
+        if "chrf" not in ckpt_scores:
+            print("  Computing ChrF...")
+            ckpt_scores["chrf"] = compute_chrf(hypotheses, references)
+            print(f"  ChrF: {ckpt_scores['chrf']}")
+            results[ckpt_name] = ckpt_scores
+            save_scores(results)
+        else:
+            print(f"  ChrF already computed: {ckpt_scores['chrf']} — skipping.")
+
+        # COMET-DA
         if "comet_wmt22" not in ckpt_scores:
             print("  Computing COMET-DA (wmt22-comet-da)...")
             ckpt_scores["comet_wmt22"] = compute_comet_da(sources, hypotheses, references)
