@@ -3,28 +3,23 @@ import torch
 from dotenv import load_dotenv
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
+from peft import LoraConfig, prepare_model_for_kbit_training
 from trl import DPOTrainer, DPOConfig
 
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
+MODEL_PATH  = os.getenv("MODELS_DIR").rstrip("/")
 
-BASE_MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
-SFT_CHECKPOINT = f"{MODEL_PATH}/SFT_TowerInstruct_final/checkpoint-1250"
-OUTPUT_DIR  = f"{MODEL_PATH}/DPO_TowerInstruct_beta0.5"
-
-BETA = 0.5  # tuning with 0.1 0.01, 0.05, 0.5 ...
+MERGED_MODEL = f"{MODEL_PATH}/SFT_TowerInstruct_merged"
 
 
 tokenizer = AutoTokenizer.from_pretrained(
-    BASE_MODEL_NAME,
+    MERGED_MODEL,
     padding_side="left",
     trust_remote_code=True,
 )
 tokenizer.pad_token = tokenizer.eos_token
-
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -33,28 +28,25 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-base_model = AutoModelForCausalLM.from_pretrained(
-    BASE_MODEL_NAME,
+# Loading merged clear SFT model wihtout peft
+print("Loading merged SFT model...")
+model = AutoModelForCausalLM.from_pretrained(
+    MERGED_MODEL,
     quantization_config=bnb_config,
     device_map={"": 0},
     trust_remote_code=True,
 )
-base_model = prepare_model_for_kbit_training(base_model)
+model = prepare_model_for_kbit_training(model)
 
-
-model = PeftModel.from_pretrained(base_model, SFT_CHECKPOINT, is_trainable=True)
-
-
-# explicit reference model requested by TRL when using PEFT 
-ref_base = AutoModelForCausalLM.from_pretrained(
-    BASE_MODEL_NAME,
-    quantization_config=bnb_config,
-    device_map="auto",
-    trust_remote_code=True,
+# TRL applies LoRA internally via peft_config
+peft_config = LoraConfig(
+    r=8,
+    lora_alpha=64,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM",
 )
-ref_model = PeftModel.from_pretrained(ref_base, SFT_CHECKPOINT, is_trainable=False)
-ref_model.eval()
-
 
 dataset = load_dataset(
     "json",
@@ -62,51 +54,59 @@ dataset = load_dataset(
     split="train",
 )
 
-# test here is not tico but test split form dpo_train_bw.jsonl
+# eval split from dpo_train_bw.jsonl only (not TICO-19)
 split = dataset.train_test_split(test_size=0.05, seed=42)
 train_dataset = split["train"]
 eval_dataset  = split["test"]
 
 print(f"Train: {len(train_dataset)} pairs | Eval: {len(eval_dataset)} pairs")
 
+BETAS = [0.01, 0.05, 0.1, 0.5]
 
-dpo_config = DPOConfig(
-    output_dir=OUTPUT_DIR,
-    beta=BETA,
-    num_train_epochs=1, # same as mbr paper
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    gradient_accumulation_steps=8,
-    learning_rate=5e-7, # same as mbr paper
-    lr_scheduler_type="cosine",
-    warmup_steps=50,
-    bf16=True,
-    logging_steps=10,
-    eval_strategy="steps",
-    eval_steps=200,
-    save_strategy="steps",
-    save_steps=200,
-    save_total_limit=2,
-    load_best_model_at_end=True,
-    metric_for_best_model="eval_loss",
-    greater_is_better=False,
-    max_length=512,
-    report_to="none",
-    disable_tqdm=False,
-)
+for BETA in BETAS:
+    OUTPUT_DIR = f"{MODEL_PATH}/DPO_TowerInstruct_beta{BETA}"
+    print(f"\n{'='*50}")
+    print(f"  Starting DPO training — beta={BETA}")
+    print(f"{'='*50}")
 
+    dpo_config = DPOConfig(
+        output_dir=OUTPUT_DIR,
+        beta=BETA,
+        num_train_epochs=1,
+        per_device_train_batch_size=2,
+        per_device_eval_batch_size=2,
+        gradient_accumulation_steps=8,
+        learning_rate=5e-7,
+        lr_scheduler_type="cosine",
+        warmup_steps=50,
+        bf16=True,
+        logging_steps=10,
+        eval_strategy="steps",
+        eval_steps=200,
+        save_strategy="steps",
+        save_steps=200,
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+        max_length=512,
+        report_to="none",
+        disable_tqdm=False,
+    )
 
-trainer = DPOTrainer(
-    model=model,
-    ref_model=ref_model,
-    args=dpo_config,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-    processing_class=tokenizer,
-)
+    trainer = DPOTrainer(
+        model=model,
+        ref_model=None,           # TRL uses initial model state as reference
+        args=dpo_config,
+        peft_config=peft_config,  # TRL applies LoRA internally on clean model
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=tokenizer,
+    )
 
-print("Starting DPO training...")
-trainer.train()
-trainer.save_model(OUTPUT_DIR)
-tokenizer.save_pretrained(OUTPUT_DIR)
-print(f"DPO model saved to {OUTPUT_DIR}")
+    trainer.train()
+    trainer.save_model(OUTPUT_DIR)
+    tokenizer.save_pretrained(OUTPUT_DIR)
+    print(f"  DPO model saved to {OUTPUT_DIR}")
+
+print("\nAll beta runs completed.")
