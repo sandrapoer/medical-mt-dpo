@@ -16,12 +16,12 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODEL_PATH     = os.getenv("MODELS_DIR").rstrip("/")
-BASE_MODEL     = "Qwen/Qwen3-8B"
-OUTPUT_DIR     = f"{MODEL_PATH}/optuna_qwen3"
-DB_PATH        = f"{MODEL_PATH}/optuna_qwen3.db"
-N_TRIALS       = 15
-GPU_ID         = 0
+MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
+BASE_MODEL = "mistralai/Ministral-8B-Instruct-2410"
+OUTPUT_DIR = f"{MODEL_PATH}/optuna_ministral"
+DB_PATH = f"{MODEL_PATH}/optuna_ministral.db"
+N_TRIALS = 15
+GPU_ID = 1
 
 
 
@@ -29,6 +29,7 @@ tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "left"
+
 
 
 raw_dataset = load_dataset(
@@ -44,19 +45,18 @@ def tokenize(example):
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     asst_msg = next(m for m in messages if m["role"] == "assistant")
-    text = (
-        f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n"
-        f"<|im_start|>assistant\n<think>\n</think>\n"
-        f"{asst_msg['content']}<|im_end|>"
-    )
+    # Ministral format: <s>[INST]user[/INST]assistant</s>
+    # different from Qwen and TowerInstruct -> use <s>user</s>assistant</s>
+    text = f"<s>[INST]{user_msg['content']}[/INST]{asst_msg['content']}</s>"
     return tokenizer(text, truncation=True, max_length=512)
 
 
 dataset = raw_dataset.map(tokenize, remove_columns=raw_dataset["train"].column_names)
 
 
+
 class CompletionOnlyCollator:
-    def __init__(self, tokenizer, response_template="<|im_start|>assistant\n"):
+    def __init__(self, tokenizer, response_template="[/INST]"):
         self.tokenizer = tokenizer
         self.response_token_ids = tokenizer.encode(
             response_template, add_special_tokens=False
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     study = optuna.create_study(
         direction="minimize",
         sampler=optuna.samplers.TPESampler(seed=42),
-        study_name="qwen3_sft_optuna",
+        study_name="ministral_sft_optuna",
         storage=f"sqlite:///{DB_PATH}",
         load_if_exists=True,
     )
