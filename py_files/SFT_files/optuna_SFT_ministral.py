@@ -21,7 +21,7 @@ BASE_MODEL = "mistralai/Ministral-8B-Instruct-2410"
 OUTPUT_DIR = f"{MODEL_PATH}/optuna_ministral"
 DB_PATH = f"{MODEL_PATH}/optuna_ministral.db"
 N_TRIALS = 15
-GPU_ID = 1
+GPU_ID = 0
 
 
 

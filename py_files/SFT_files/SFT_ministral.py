@@ -40,10 +40,10 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model = prepare_model_for_kbit_training(model)
 
-
+# wiht optuna best hyperparameters
 lora_config = LoraConfig(
-    r=16,                      # <-- replace with best Optuna lora_r
-    lora_alpha=32,             # <-- replace with best Optuna lora_alpha
+    r=8,
+    lora_alpha=64,
     target_modules="all-linear",
     lora_dropout=0.05,
     bias="none",
@@ -56,7 +56,7 @@ model.print_trainable_parameters()
 dataset = load_dataset(
     "json",
     data_files={
-        "train":      f"{PROCESSED_PATH}/train/messages_train.jsonl",
+        "train": f"{PROCESSED_PATH}/train/messages_train.jsonl",
         "validation": f"{PROCESSED_PATH}/val/messages_val.jsonl",
     }
 )
@@ -119,7 +119,7 @@ class CompletionOnlyCollator:
 
 collator = CompletionOnlyCollator(tokenizer)
 
-
+# with optuna best hyperparameters
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     num_train_epochs=3,
@@ -127,8 +127,8 @@ training_args = TrainingArguments(
     per_device_eval_batch_size=4,
     gradient_accumulation_steps=4,
     eval_accumulation_steps=4,
-    learning_rate=2e-4,        # <-- replace with best Optuna learning_rate
-    warmup_steps=100,          # <-- replace with best Optuna warmup_steps
+    learning_rate=9.418986507624857e-05,
+    warmup_steps=60,
     lr_scheduler_type="cosine",
     bf16=True,
     logging_steps=10,
