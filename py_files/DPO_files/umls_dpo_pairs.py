@@ -18,7 +18,8 @@ UMLS_API_KEY = os.getenv("UMLS_API_KEY")
 UMLS_VERSION = "2026AA"
 UMLS_BASE = "https://uts-ws.nlm.nih.gov/rest"
 REQUEST_DELAY = 0.1
-TEST_RUN=True
+
+TEST_RUN=False
 TEST_LIMIT=10
 
 
@@ -58,24 +59,29 @@ def get_cui(term: str, api_key: str) -> str | None:
 
 
 def get_french_terms(cui: str, api_key: str) -> list:
-    url = f"{UMLS_BASE}/content/2026AA/CUI/{cui}/atoms"
-    params = {
-        "apiKey": api_key,
-        "pageSize": 50,
-    }
+    url = f"{UMLS_BASE}/content/{UMLS_VERSION}/CUI/{cui}/atoms"
     fr_terms = []
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        atoms = r.json().get("result", [])
-        for atom in atoms:
-            if atom.get("language") == "FRE":
-                name = atom.get("name", "").strip().lower()
-                if name:
-                    fr_terms.append(name)
-    except Exception as e:
-        print(f"  French atom lookup failed for CUI '{cui}': {e}")
-    return fr_terms
+    for page in range(1, 6):
+        params = {"apiKey": api_key, "pageSize": 50, "pageNumber": page}
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            if r.status_code == 404:
+                break  # no more pages
+            r.raise_for_status()
+            atoms = r.json().get("result", [])
+            if not atoms:
+                break
+            for atom in atoms:
+                if atom.get("language") == "FRE":
+                    name = atom.get("name", "").strip().lower()
+                    if name:
+                        fr_terms.append(name)
+            if fr_terms:
+                break  # stop after first page with French terms
+        except Exception as e:
+            print(f"  French atom lookup failed for CUI '{cui}': {e}")
+            break
+    return list(set(fr_terms))
 
 
 def lookup_term(term: str, cache: dict, api_key: str) -> list:
