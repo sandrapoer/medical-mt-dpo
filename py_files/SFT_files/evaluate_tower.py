@@ -21,14 +21,13 @@ PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
 
-VAL_FILE = f"{PROCESSED_PATH}/val/messages_val.jsonl"
-OUT_DIR = f"{MODELS_DIR}/SFT_TowerInstruct_final/eval_results"
+VAL_FILE = f"{PROCESSED_PATH}/val/messages_val_terms.jsonl"
+OUT_DIR = f"{MODELS_DIR}/SFT_UMLS_TowerInstruct/eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores_full.json"
 
 CHECKPOINTS = {
-    "checkpoint-625": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-625",
-    "checkpoint-1250": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1250",
-    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1875",
+    "checkpoint-1250": f"{MODELS_DIR}/SFT_UMLS_TowerInstruct/checkpoint-1250",
+    "checkpoint-1875": f"{MODELS_DIR}/SFT_UMLS_TowerInstruct/checkpoint-1875",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
@@ -187,7 +186,7 @@ def compute_comet_da(sources: list, hypotheses: list, references: list) -> float
 
 def print_summary(results: dict):
     print("\n" + "=" * 65)
-    print("  EVALUATION SUMMARY — Validation Set")
+    print("  EVALUATION SUMMARY — Validation Set (Terms-enriched SFT)")
     print("=" * 65)
     print(f"{'Checkpoint':<20} {'BLEU':>8} {'ChrF':>8} {'COMET-DA':>10}")
     print("-" * 65)
@@ -197,8 +196,6 @@ def print_summary(results: dict):
         comet_da = scores.get("comet_wmt22", "—")
         print(f"{ckpt:<20} {str(bleu):>8} {str(chrf):>8} {str(comet_da):>10}")
     print("=" * 65)
-    print("\nNote: Paired bootstrap significance testing (BLEU + ChrF)")
-    print("to be run via sacrebleu CLI after all models are evaluated.")
 
 
 def main():
@@ -225,7 +222,6 @@ def main():
         else:
             print("  Skipping generation.")
 
-        # BLEU
         if "bleu" not in ckpt_scores:
             print("  Computing BLEU...")
             ckpt_scores["bleu"] = compute_bleu(hypotheses, references)
@@ -235,7 +231,6 @@ def main():
         else:
             print(f"  BLEU already computed: {ckpt_scores['bleu']} — skipping.")
 
-        # ChrF
         if "chrf" not in ckpt_scores:
             print("  Computing ChrF...")
             ckpt_scores["chrf"] = compute_chrf(hypotheses, references)
@@ -245,7 +240,6 @@ def main():
         else:
             print(f"  ChrF already computed: {ckpt_scores['chrf']} — skipping.")
 
-        # COMET-DA
         if "comet_wmt22" not in ckpt_scores:
             print("  Computing COMET-DA (wmt22-comet-da)...")
             ckpt_scores["comet_wmt22"] = compute_comet_da(sources, hypotheses, references)
