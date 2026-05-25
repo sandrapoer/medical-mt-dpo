@@ -12,7 +12,7 @@ PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH     = os.getenv("MODELS_DIR").rstrip("/")
 
 BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
-OUTPUT_DIR = f"{MODEL_PATH}/SFT_UMLS_TRL_TowerInstruct_terms"
+OUTPUT_DIR = f"{MODEL_PATH}/SFT_UMLS_TRL_TowerInstruct"
 
 
 # Tokenizer
