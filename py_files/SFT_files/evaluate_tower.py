@@ -22,13 +22,13 @@ MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 BASE_MODEL = "Unbabel/TowerInstruct-7B-v0.2"
 
 VAL_FILE = f"{PROCESSED_PATH}/val/messages_val_terms_only.jsonl"
-OUT_DIR = f"{MODELS_DIR}/SFT_UMLS_TRL_TowerInstruct/eval_results_terms_only"
+OUT_DIR = f"{MODELS_DIR}/SFT_TowerInstruct_final/eval_results_terms_only"
 SCORES_FILE = f"{OUT_DIR}/val_scores_full.json"
 
 CHECKPOINTS = {
-    "checkpoint-625": f"{MODELS_DIR}/SFT_UMLS_TRL_TowerInstruct/checkpoint-625",
-    "checkpoint-1250": f"{MODELS_DIR}/SFT_UMLS_TRL_TowerInstruct/checkpoint-1250",
-    "checkpoint-1875": f"{MODELS_DIR}/SFT_UMLS_TRL_TowerInstruct/checkpoint-1875",
+    "checkpoint-625": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-625",
+    "checkpoint-1250": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1250",
+    "checkpoint-1875": f"{MODELS_DIR}/SFT_TowerInstruct_final/checkpoint-1875",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
