@@ -9,11 +9,9 @@ from trl import DPOTrainer, DPOConfig
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODEL_PATH     = os.getenv("MODELS_DIR").rstrip("/")
+MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
-# Load from merged SFT model — correct pipeline per HF DPO blog
-# SFT LoRA has been merged into base, giving a clean starting point for DPO
-MERGED_MODEL = f"{MODEL_PATH}/SFT_TowerInstruct_merged"
+MERGED_MODEL = f"{MODEL_PATH}/SFT_Ministral_merged"
 
 tokenizer = AutoTokenizer.from_pretrained(
     MERGED_MODEL,
@@ -29,7 +27,7 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-print("Loading merged SFT model...")
+print("Loading merged SFT Ministral model...")
 model = AutoModelForCausalLM.from_pretrained(
     MERGED_MODEL,
     quantization_config=bnb_config,
@@ -38,9 +36,6 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model = prepare_model_for_kbit_training(model)
 
-# Fresh LoRA for DPO — larger rank and all-linear targets
-# r=128 gives sufficient capacity to learn preference signal
-# target_modules="all-linear" follows HF DPO blog recommendation
 peft_config = LoraConfig(
     r=128,
     lora_alpha=64,
@@ -52,21 +47,20 @@ peft_config = LoraConfig(
 
 dataset = load_dataset(
     "json",
-    data_files={"train": f"{PROCESSED_PATH}/dpo/dpo_train_bw.jsonl"},
+    data_files={"train": f"{PROCESSED_PATH}/dpo/dpo_train_bw_ministral.jsonl"},
     split="train",
 )
 
-# eval split from dpo_train_bw.jsonl only — not TICO-19
 split = dataset.train_test_split(test_size=0.05, seed=42)
 train_dataset = split["train"]
 eval_dataset  = split["test"]
 
 print(f"Train: {len(train_dataset)} pairs | Eval: {len(eval_dataset)} pairs")
 
-BETAS = [0.01]
+BETAS = [0.01, 0.05, 0.1, 0.5]
 
 for BETA in BETAS:
-    OUTPUT_DIR = f"{MODEL_PATH}/DPO_TowerInstruct_beta{BETA}"
+    OUTPUT_DIR = f"{MODEL_PATH}/DPO_Ministral_beta{BETA}"
     print(f"\n{'='*50}")
     print(f"  Starting DPO training — beta={BETA}")
     print(f"{'='*50}")
@@ -98,9 +92,9 @@ for BETA in BETAS:
 
     trainer = DPOTrainer(
         model=model,
-        ref_model=None, # TRL uses initial model state as reference
+        ref_model=None,
         args=dpo_config,
-        peft_config=peft_config,  # TRL applies LoRA internally on clean merged model
+        peft_config=peft_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
