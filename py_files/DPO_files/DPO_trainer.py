@@ -31,7 +31,7 @@ print("Loading merged SFT Qwen3 model...")
 model = AutoModelForCausalLM.from_pretrained(
     MERGED_MODEL,
     quantization_config=bnb_config,
-    device_map={"": 0},
+    device_map="auto",
     trust_remote_code=True,
 )
 model = prepare_model_for_kbit_training(model)
