@@ -8,30 +8,27 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from comet import download_model, load_from_checkpoint
 
-
 load_dotenv()
 
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 
-# DPO models load from merged SFT base + DPO LoRA adapter
-MERGED_MODEL = f"{MODELS_DIR}/SFT_TowerInstruct_merged"
+MERGED_MODEL = f"{MODELS_DIR}/SFT_Ministral_merged"
 
 VAL_FILE = f"{PROCESSED_PATH}/val/messages_val.jsonl"
-OUT_DIR = f"{MODELS_DIR}/DPO_TowerInstruct_eval_results"
+OUT_DIR = f"{MODELS_DIR}/DPO_Ministral_eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores_dpo.json"
 
 CHECKPOINTS = {
-    "dpo_beta0.01": f"{MODELS_DIR}/DPO_TowerInstruct_beta0.01/checkpoint-1000",
-    "dpo_beta0.05": f"{MODELS_DIR}/DPO_TowerInstruct_beta0.05/checkpoint-1000",
-    "dpo_beta0.1": f"{MODELS_DIR}/DPO_TowerInstruct_beta0.1/checkpoint-1000",
-    "dpo_beta0.5": f"{MODELS_DIR}/DPO_TowerInstruct_beta0.5/checkpoint-1000",
+    "dpo_beta0.01": f"{MODELS_DIR}/DPO_Ministral_beta0.01/checkpoint-1102",
+    "dpo_beta0.05": f"{MODELS_DIR}/DPO_Ministral_beta0.05/checkpoint-1102",
+    "dpo_beta0.1":  f"{MODELS_DIR}/DPO_Ministral_beta0.1/checkpoint-1102",
+    "dpo_beta0.5":  f"{MODELS_DIR}/DPO_Ministral_beta0.5/checkpoint-1102",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
-
-MAX_NEW_TOKENS = 256
-BATCH_SIZE     = 8
+MAX_NEW_TOKENS  = 256
+BATCH_SIZE = 8
 
 
 def load_existing_scores() -> dict:
@@ -73,11 +70,11 @@ def save_scores(results: dict):
 
 def load_val_data(path: str):
     sources, references, prompts = [], [], []
+    tok = AutoTokenizer.from_pretrained(MERGED_MODEL, trust_remote_code=True)
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
             msgs = obj["messages"]
-
             user_msg = next(m for m in msgs if m["role"] == "user")
             asst_msg = next(m for m in msgs if m["role"] == "assistant")
 
@@ -87,9 +84,11 @@ def load_val_data(path: str):
                     source_text = content_line[len("English:"):].strip()
                     break
 
-            prompt = (
-                f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
+            # Ministral prompt format via chat template
+            prompt = tok.apply_chat_template(
+                [{"role": "user", "content": user_msg["content"]}],
+                tokenize=False,
+                add_generation_prompt=True,
             )
 
             sources.append(source_text)
@@ -100,7 +99,6 @@ def load_val_data(path: str):
 
 
 def load_model_and_tokenizer(checkpoint_path: str):
-    # load merged SFT base, then apply DPO LoRA adapter
     print(f"  Loading tokenizer from merged model: {MERGED_MODEL}")
     tokenizer = AutoTokenizer.from_pretrained(MERGED_MODEL, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
@@ -113,7 +111,7 @@ def load_model_and_tokenizer(checkpoint_path: str):
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    print(f"  Loading merged SFT base model...")
+    print(f"  Loading merged SFT Ministral base model...")
     base_model = AutoModelForCausalLM.from_pretrained(
         MERGED_MODEL,
         quantization_config=bnb_config,
@@ -171,21 +169,17 @@ def compute_comet_da(sources: list, hypotheses: list, references: list) -> float
     print(f"  Loading COMET model: {COMET_REF_MODEL}")
     comet_path  = download_model(COMET_REF_MODEL)
     comet_model = load_from_checkpoint(comet_path)
-
     data = [{"src": s, "mt": h, "ref": r}
             for s, h, r in zip(sources, hypotheses, references)]
-
     output = comet_model.predict(data, batch_size=16, gpus=1)
-
     del comet_model
     torch.cuda.empty_cache()
-
     return round(output.system_score, 4)
 
 
 def print_summary(results: dict):
     print("\n" + "=" * 65)
-    print("  EVALUATION SUMMARY — DPO TowerInstruct — Validation Set")
+    print("  EVALUATION SUMMARY — DPO Ministral — Validation Set")
     print("=" * 65)
     print(f"{'Model':<20} {'BLEU':>8} {'ChrF':>8} {'COMET-DA':>10}")
     print("-" * 65)
@@ -195,8 +189,6 @@ def print_summary(results: dict):
         comet_da = scores.get("comet_wmt22", "—")
         print(f"{ckpt:<20} {str(bleu):>8} {str(chrf):>8} {str(comet_da):>10}")
     print("=" * 65)
-    print("\nNote: Paired bootstrap significance testing (BLEU + ChrF)")
-    print("to be run via sacrebleu CLI after all models are evaluated.")
 
 
 def main():
@@ -223,7 +215,6 @@ def main():
         else:
             print("  Skipping generation.")
 
-        # BLEU
         if "bleu" not in ckpt_scores:
             print("  Computing BLEU...")
             ckpt_scores["bleu"] = compute_bleu(hypotheses, references)
@@ -233,7 +224,6 @@ def main():
         else:
             print(f"  BLEU already computed: {ckpt_scores['bleu']} — skipping.")
 
-        # ChrF
         if "chrf" not in ckpt_scores:
             print("  Computing ChrF...")
             ckpt_scores["chrf"] = compute_chrf(hypotheses, references)
@@ -243,7 +233,6 @@ def main():
         else:
             print(f"  ChrF already computed: {ckpt_scores['chrf']} — skipping.")
 
-        # COMET-DA
         if "comet_wmt22" not in ckpt_scores:
             print("  Computing COMET-DA (wmt22-comet-da)...")
             ckpt_scores["comet_wmt22"] = compute_comet_da(sources, hypotheses, references)
