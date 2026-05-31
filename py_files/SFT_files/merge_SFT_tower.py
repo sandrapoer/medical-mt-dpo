@@ -8,11 +8,12 @@ load_dotenv()
 
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 BASE_MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
-SFT_CHECKPOINT = f"{MODEL_PATH}/SFT_TowerInstruct_final/checkpoint-1250"
-MERGED_OUTPUT = f"{MODEL_PATH}/SFT_TowerInstruct_merged"
+SFT_CHECKPOINT = f"{MODEL_PATH}/SFT_UMLS_TRL_TowerInstruct/checkpoint-1875"
+MERGED_OUTPUT = f"{MODEL_PATH}/SFT_TowerInstruct_terms_merged"
 
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME, trust_remote_code=True)
-tokenizer.pad_token = tokenizer.eos_token
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -29,7 +30,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True,
 )
 
-print("Loading SFT LoRA adapter...")
+print("Loading SFT terms LoRA adapter...")
 model = PeftModel.from_pretrained(base_model, SFT_CHECKPOINT)
 
 print("Merging adapter into base model...")
