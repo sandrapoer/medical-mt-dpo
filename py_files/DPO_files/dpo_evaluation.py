@@ -13,17 +13,17 @@ load_dotenv()
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 
-MERGED_MODEL = f"{MODELS_DIR}/SFT_Ministral_merged"
+MERGED_MODEL = f"{MODELS_DIR}/SFT_Qwen3_merged"
 
 VAL_FILE = f"{PROCESSED_PATH}/val/messages_val.jsonl"
-OUT_DIR = f"{MODELS_DIR}/DPO_Ministral_eval_results"
+OUT_DIR = f"{MODELS_DIR}/DPO_Qwen3_eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores_dpo.json"
 
 CHECKPOINTS = {
-    "dpo_beta0.01": f"{MODELS_DIR}/DPO_Ministral_beta0.01/checkpoint-1102",
-    "dpo_beta0.05": f"{MODELS_DIR}/DPO_Ministral_beta0.05/checkpoint-1102",
-    "dpo_beta0.1":  f"{MODELS_DIR}/DPO_Ministral_beta0.1/checkpoint-1102",
-    "dpo_beta0.5":  f"{MODELS_DIR}/DPO_Ministral_beta0.5/checkpoint-1102",
+    "dpo_beta0.01": f"{MODELS_DIR}/DPO_Qwen3_beta0.01/checkpoint-1102",
+    "dpo_beta0.05": f"{MODELS_DIR}/DPO_Qwen3_beta0.05/checkpoint-1102",
+    "dpo_beta0.1": f"{MODELS_DIR}/DPO_Qwen3_beta0.1/checkpoint-1102",
+    "dpo_beta0.5": f"{MODELS_DIR}/DPO_Qwen3_beta0.5/checkpoint-1102",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
@@ -70,7 +70,6 @@ def save_scores(results: dict):
 
 def load_val_data(path: str):
     sources, references, prompts = [], [], []
-    tok = AutoTokenizer.from_pretrained(MERGED_MODEL, trust_remote_code=True)
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
@@ -84,11 +83,10 @@ def load_val_data(path: str):
                     source_text = content_line[len("English:"):].strip()
                     break
 
-            # Ministral prompt format via chat template
-            prompt = tok.apply_chat_template(
-                [{"role": "user", "content": user_msg["content"]}],
-                tokenize=False,
-                add_generation_prompt=True,
+            # Qwen uses same <|im_start|> format as Tower
+            prompt = (
+                f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
             )
 
             sources.append(source_text)
@@ -111,7 +109,7 @@ def load_model_and_tokenizer(checkpoint_path: str):
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    print(f"  Loading merged SFT Ministral base model...")
+    print(f"  Loading merged SFT Qwen3 base model...")
     base_model = AutoModelForCausalLM.from_pretrained(
         MERGED_MODEL,
         quantization_config=bnb_config,
@@ -179,7 +177,7 @@ def compute_comet_da(sources: list, hypotheses: list, references: list) -> float
 
 def print_summary(results: dict):
     print("\n" + "=" * 65)
-    print("  EVALUATION SUMMARY — DPO Ministral — Validation Set")
+    print("  EVALUATION SUMMARY — DPO Qwen3 — Validation Set")
     print("=" * 65)
     print(f"{'Model':<20} {'BLEU':>8} {'ChrF':>8} {'COMET-DA':>10}")
     print("-" * 65)
