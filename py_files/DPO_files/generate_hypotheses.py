@@ -9,37 +9,30 @@ from tqdm import tqdm
 
 load_dotenv()
 
-# Start: Testing a few samples
 TEST_MODE = False
 
-
-PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
+PROCESSED_PATH  = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
-# Path to your best SFT checkpoint
-SFT_MODEL_PATH = f"{MODEL_PATH}/SFT_TowerInstruct_final/checkpoint-1250"
-BASE_MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
-OUTPUT_FILE = f"{PROCESSED_PATH}/dpo/hypotheses.jsonl"
+SFT_MODEL_PATH  = f"{MODEL_PATH}/SFT_Qwen3_final/checkpoint-1875"
+BASE_MODEL_NAME = "Qwen/Qwen3-8B"
+OUTPUT_FILE = f"{PROCESSED_PATH}/dpo/hypotheses_qwen.jsonl"
+
 NUM_HYPOTHESES = 8
 TEMPERATURE = 0.7
 TOP_P = 0.9
 MAX_NEW_TOKENS = 128
-BATCH_SIZE = 16 
-
+BATCH_SIZE = 16
 
 os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 
-# Tokenizer loaded from base model 
 tokenizer = AutoTokenizer.from_pretrained(
     BASE_MODEL_NAME,
-    padding_side="left",  # left padding required for causal LM generation
+    padding_side="left",
     trust_remote_code=True,
 )
 tokenizer.pad_token = tokenizer.eos_token
 
-
-# base loaded in 4-bit, 
-# LoRA applied from SFT checkpoint
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
@@ -50,12 +43,11 @@ bnb_config = BitsAndBytesConfig(
 base_model = AutoModelForCausalLM.from_pretrained(
     BASE_MODEL_NAME,
     quantization_config=bnb_config,
-    device_map="auto",
+    device_map={"": 0},
     trust_remote_code=True,
 )
 model = PeftModel.from_pretrained(base_model, SFT_MODEL_PATH)
 model.eval()
-
 
 dataset = load_dataset(
     "json",
@@ -63,16 +55,14 @@ dataset = load_dataset(
     split="train",
 )
 
-# Testing
 if TEST_MODE:
     dataset = dataset.select(range(5))
 
 
-
 def build_prompt(example):
-    # Reconstruct the ChatML prompt from the messages field
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
+    # Qwen uses <|im_start|>/<|im_end|> same as Tower
     return f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n<|im_start|>assistant\n"
 
 
@@ -84,7 +74,7 @@ def get_source(example):
             return line[len("English:"):].strip()
     return ""
 
-# Generation
+
 completed = set()
 if os.path.exists(OUTPUT_FILE):
     with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
@@ -94,12 +84,9 @@ if os.path.exists(OUTPUT_FILE):
     print(f"Resuming — {len(completed)} examples already done.")
 
 outfile = open(OUTPUT_FILE, "a", encoding="utf-8")
+prompts, sources, indices = [], [], []
 
-prompts  = []
-sources  = []
-indices  = []
-
-for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
+for i, example in enumerate(tqdm(dataset, desc="Generating Qwen hypotheses")):
     source = get_source(example)
     if source in completed:
         continue
@@ -107,7 +94,6 @@ for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
     sources.append(source)
     indices.append(i)
 
-    # Process in batches
     if len(prompts) == BATCH_SIZE or i == len(dataset) - 1:
         inputs = tokenizer(
             prompts,
@@ -118,8 +104,6 @@ for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
         ).to("cuda")
 
         with torch.no_grad():
-            # Generate NUM_HYPOTHESES samples per prompt
-            # do_sample=True + temperature enables diverse sampling
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=MAX_NEW_TOKENS,
@@ -133,27 +117,20 @@ for i, example in enumerate(tqdm(dataset, desc="Generating hypotheses")):
                 eos_token_id=tokenizer.eos_token_id,
             )
 
-        # outputs shape: (BATCH_SIZE * NUM_HYPOTHESES, seq_len)
-        # reshape to (BATCH_SIZE, NUM_HYPOTHESES, seq_len)
-        input_len = inputs["input_ids"].shape[1]
+        input_len  = inputs["input_ids"].shape[1]
         batch_size = len(prompts)
 
         for b in range(batch_size):
             hyps = []
             for h in range(NUM_HYPOTHESES):
-                idx = b * NUM_HYPOTHESES + h
-                # Decode only the newly generated tokens, not the prompt
+                idx     = b * NUM_HYPOTHESES + h
                 generated = outputs[idx][input_len:]
                 decoded = tokenizer.decode(generated, skip_special_tokens=True).strip()
-                # Truncate at first sentence end
                 if "." in decoded:
                     decoded = decoded[:decoded.index(".") + 1].strip()
                 hyps.append(decoded)
 
-            record = {
-                "source": sources[b],
-                "hypotheses": hyps,  # list of 8 translation candidates
-            }
+            record = {"source": sources[b], "hypotheses": hyps}
             outfile.write(json.dumps(record, ensure_ascii=False) + "\n")
 
         prompts, sources, indices = [], [], []
