@@ -14,9 +14,9 @@ TEST_MODE = False
 PROCESSED_PATH  = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
-SFT_MODEL_PATH  = f"{MODEL_PATH}/SFT_Qwen3_final/checkpoint-1875"
-BASE_MODEL_NAME = "Qwen/Qwen3-8B"
-OUTPUT_FILE = f"{PROCESSED_PATH}/dpo/hypotheses_qwen.jsonl"
+SFT_MODEL_PATH = f"{MODEL_PATH}/SFT_Ministral_final/checkpoint-1875"
+BASE_MODEL_NAME = "mistralai/Ministral-8B-Instruct-2410"
+OUTPUT_FILE = f"{PROCESSED_PATH}/dpo/hypotheses_ministral.jsonl"
 
 NUM_HYPOTHESES = 8
 TEMPERATURE = 0.7
@@ -62,8 +62,12 @@ if TEST_MODE:
 def build_prompt(example):
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
-    # Qwen uses <|im_start|>/<|im_end|> same as Tower
-    return f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n<|im_start|>assistant\n"
+    # Ministral uses [INST]/[/INST] via chat template
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": user_msg["content"]}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
 
 
 def get_source(example):
@@ -86,7 +90,7 @@ if os.path.exists(OUTPUT_FILE):
 outfile = open(OUTPUT_FILE, "a", encoding="utf-8")
 prompts, sources, indices = [], [], []
 
-for i, example in enumerate(tqdm(dataset, desc="Generating Qwen hypotheses")):
+for i, example in enumerate(tqdm(dataset, desc="Generating Ministral hypotheses")):
     source = get_source(example)
     if source in completed:
         continue
@@ -123,7 +127,7 @@ for i, example in enumerate(tqdm(dataset, desc="Generating Qwen hypotheses")):
         for b in range(batch_size):
             hyps = []
             for h in range(NUM_HYPOTHESES):
-                idx     = b * NUM_HYPOTHESES + h
+                idx = b * NUM_HYPOTHESES + h
                 generated = outputs[idx][input_len:]
                 decoded = tokenizer.decode(generated, skip_special_tokens=True).strip()
                 if "." in decoded:
