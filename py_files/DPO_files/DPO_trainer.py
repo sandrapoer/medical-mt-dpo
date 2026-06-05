@@ -11,7 +11,7 @@ load_dotenv()
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
-MERGED_MODEL = f"{MODEL_PATH}/SFT_Qwen3_merged"
+MERGED_MODEL = f"{MODEL_PATH}/SFT_Ministral_merged"
 
 tokenizer = AutoTokenizer.from_pretrained(
     MERGED_MODEL,
@@ -47,7 +47,7 @@ peft_config = LoraConfig(
 
 dataset = load_dataset(
     "json",
-    data_files={"train": f"{PROCESSED_PATH}/dpo/dpo_train_qwen.jsonl"},
+    data_files={"train": f"{PROCESSED_PATH}/dpo/dpo_train_ministral.jsonl"},
     split="train",
 )
 
@@ -60,7 +60,7 @@ print(f"Train: {len(train_dataset)} pairs | Eval: {len(eval_dataset)} pairs")
 BETAS = [0.01, 0.05, 0.1, 0.5]
 
 for BETA in BETAS:
-    OUTPUT_DIR = f"{MODEL_PATH}/DPO_Qwen3_umls_beta{BETA}"
+    OUTPUT_DIR = f"{MODEL_PATH}/DPO_Ministral_umls_beta{BETA}"
     print(f"\n{'='*50}")
     print(f"  Starting DPO training — beta={BETA}")
     print(f"{'='*50}")
