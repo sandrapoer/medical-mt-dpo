@@ -13,17 +13,17 @@ load_dotenv()
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 
-MERGED_MODEL = f"{MODELS_DIR}/SFT_TowerInstruct_terms_merged"
+MERGED_MODEL = f"{MODELS_DIR}/SFT_Ministral_terms_merged"
 
 VAL_FILE = f"{PROCESSED_PATH}/val/messages_val_terms.jsonl"
-OUT_DIR = f"{MODELS_DIR}/DPO_TowerInstruct_terms_eval_results"
+OUT_DIR = f"{MODELS_DIR}/DPO_Ministral_terms_eval_results"
 SCORES_FILE = f"{OUT_DIR}/val_scores_dpo.json"
 
 CHECKPOINTS = {
-    "dpo_beta0.01": f"{MODELS_DIR}/DPO_TowerInstruct_terms_beta0.01/checkpoint-261",
-    "dpo_beta0.05": f"{MODELS_DIR}/DPO_TowerInstruct_terms_beta0.05/checkpoint-261",
-    "dpo_beta0.1": f"{MODELS_DIR}/DPO_TowerInstruct_terms_beta0.1/checkpoint-261",
-    "dpo_beta0.5": f"{MODELS_DIR}/DPO_TowerInstruct_terms_beta0.5/checkpoint-261",
+    "dpo_beta0.01": f"{MODELS_DIR}/DPO_Ministral_terms_beta0.01/checkpoint-177",
+    "dpo_beta0.05": f"{MODELS_DIR}/DPO_Ministral_terms_beta0.05/checkpoint-177",
+    "dpo_beta0.1": f"{MODELS_DIR}/DPO_Ministral_terms_beta0.1/checkpoint-177",
+    "dpo_beta0.5": f"{MODELS_DIR}/DPO_Ministral_terms_beta0.5/checkpoint-177",
 }
 
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
