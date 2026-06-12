@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 import torch
 import sacrebleu
 from dotenv import load_dotenv
@@ -13,35 +14,56 @@ load_dotenv()
 PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODELS_DIR = os.getenv("MODELS_DIR").rstrip("/")
 
-MERGED_MODEL = f"{MODELS_DIR}/SFT_Qwen3_terms_merged"
-
-VAL_FILE = f"{PROCESSED_PATH}/val/messages_val_terms.jsonl"
-OUT_DIR = f"{MODELS_DIR}/DPO_Qwen3_terms_eval_results"
-SCORES_FILE = f"{OUT_DIR}/val_scores_dpo.json"
-
-CHECKPOINTS = {
-    "dpo_beta0.01": f"{MODELS_DIR}/DPO_Qwen3_terms_beta0.01/checkpoint-230",
-    "dpo_beta0.05": f"{MODELS_DIR}/DPO_Qwen3_terms_beta0.05/checkpoint-230",
-    "dpo_beta0.1": f"{MODELS_DIR}/DPO_Qwen3_terms_beta0.1/checkpoint-230",
-    "dpo_beta0.5": f"{MODELS_DIR}/DPO_Qwen3_terms_beta0.5/checkpoint-230",
-}
-
 COMET_REF_MODEL = "Unbabel/wmt22-comet-da"
 MAX_NEW_TOKENS  = 256
 BATCH_SIZE = 8
+BETAS = [0.01, 0.05, 0.1, 0.5]
+
+MODEL_CONFIGS = {
+    "ministral": dict(
+        merged=f"{MODELS_DIR}/SFT_Ministral_terms_merged",
+        stem="DPO_Ministral_terms",
+        val_file=f"{PROCESSED_PATH}/val/messages_val_terms.jsonl",
+        is_qwen=False,
+    ),
+    "tower": dict(
+        merged=f"{MODELS_DIR}/SFT_TowerInstruct_terms_merged",
+        stem="DPO_TowerInstruct_terms",
+        val_file=f"{PROCESSED_PATH}/val/messages_val_terms.jsonl",
+        is_qwen=False,
+    ),
+    "qwen": dict(
+        merged=f"{MODELS_DIR}/SFT_Qwen3_terms_merged",
+        stem="DPO_Qwen3_terms",
+        val_file=f"{PROCESSED_PATH}/val/messages_val_terms.jsonl",
+        is_qwen=True,
+    ),
+}
 
 
-def load_existing_scores() -> dict:
-    if os.path.exists(SCORES_FILE):
-        with open(SCORES_FILE) as f:
+def parse_args():
+    p = argparse.ArgumentParser(description="DPO terms evaluation.")
+    p.add_argument("--model", required=True, choices=["tower", "ministral", "qwen"])
+    return p.parse_args()
+
+
+def checkpoint_paths(stem: str) -> dict:
+    return {
+        f"dpo_beta{b}": f"{MODELS_DIR}/{stem}_beta{b}"
+        for b in BETAS
+    }
+
+def load_existing_scores(scores_file: str) -> dict:
+    if os.path.exists(scores_file):
+        with open(scores_file) as f:
             scores = json.load(f)
-        print(f"  Resuming — loaded existing scores from {SCORES_FILE}")
+        print(f"  Resuming — loaded existing scores from {scores_file}")
         return scores
     return {}
 
 
-def load_existing_hypotheses(ckpt_name: str):
-    hyp_path = f"{OUT_DIR}/hypotheses_{ckpt_name}.jsonl"
+def load_existing_hypotheses(out_dir: str, ckpt_name: str):
+    hyp_path = f"{out_dir}/hypotheses_{ckpt_name}.jsonl"
     if os.path.exists(hyp_path):
         hypotheses = []
         with open(hyp_path, "r", encoding="utf-8") as f:
@@ -52,27 +74,37 @@ def load_existing_hypotheses(ckpt_name: str):
     return None
 
 
-def save_hypotheses(ckpt_name: str, hypotheses: list):
-    os.makedirs(OUT_DIR, exist_ok=True)
-    hyp_path = f"{OUT_DIR}/hypotheses_{ckpt_name}.jsonl"
+def save_hypotheses(out_dir: str, ckpt_name: str, hypotheses: list):
+    os.makedirs(out_dir, exist_ok=True)
+    hyp_path = f"{out_dir}/hypotheses_{ckpt_name}.jsonl"
     with open(hyp_path, "w", encoding="utf-8") as f:
         for h in hypotheses:
             f.write(json.dumps({"hypothesis": h}, ensure_ascii=False) + "\n")
     print(f"  Hypotheses saved to: {hyp_path}")
 
 
-def save_scores(results: dict):
-    os.makedirs(OUT_DIR, exist_ok=True)
-    with open(SCORES_FILE, "w") as f:
+def save_scores(scores_file: str, results: dict):
+    os.makedirs(os.path.dirname(scores_file), exist_ok=True)
+    with open(scores_file, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"  Scores saved to: {SCORES_FILE}")
+    print(f"  Scores saved to: {scores_file}")
 
 
-def load_val_data(path: str):
+def build_prompt(user_content: str, is_qwen_or_tower: bool) -> str:
+    if is_qwen_or_tower:
+        return (
+            f"<|im_start|>user\n{user_content}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+    else:
+        return f"<s>[INST]{user_content}[/INST]"
+
+
+def load_val_data(path: str, is_qwen: bool):
     sources, references, prompts = [], [], []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
-            obj = json.loads(line)
+            obj  = json.loads(line)
             msgs = obj["messages"]
             user_msg = next(m for m in msgs if m["role"] == "user")
             asst_msg = next(m for m in msgs if m["role"] == "assistant")
@@ -83,24 +115,18 @@ def load_val_data(path: str):
                     source_text = content_line[len("English:"):].strip()
                     break
 
-            # Qwen uses same <|im_start|> format as Tower
-            prompt = (
-                f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
-
             sources.append(source_text)
             references.append(asst_msg["content"].strip())
-            prompts.append(prompt)
+            prompts.append(build_prompt(user_msg["content"], is_qwen_or_tower=True))
 
     return sources, references, prompts
 
 
-def load_model_and_tokenizer(checkpoint_path: str):
-    print(f"  Loading tokenizer from merged model: {MERGED_MODEL}")
-    tokenizer = AutoTokenizer.from_pretrained(MERGED_MODEL, trust_remote_code=True)
+def load_model_and_tokenizer(merged_path: str, checkpoint_path: str):
+    tokenizer = AutoTokenizer.from_pretrained(
+        merged_path, trust_remote_code=True, padding_side="left"
+    )
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -109,9 +135,8 @@ def load_model_and_tokenizer(checkpoint_path: str):
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    print(f"  Loading merged SFT Qwen3 base model...")
     base_model = AutoModelForCausalLM.from_pretrained(
-        MERGED_MODEL,
+        merged_path,
         quantization_config=bnb_config,
         device_map={"": 0},
         trust_remote_code=True,
@@ -123,10 +148,10 @@ def load_model_and_tokenizer(checkpoint_path: str):
     return model, tokenizer
 
 
-def generate_translations(model, tokenizer, prompts: list) -> list:
+def generate_translations(model, tokenizer, prompts: list, is_qwen: bool) -> list:
     hypotheses = []
     for i in tqdm(range(0, len(prompts), BATCH_SIZE), desc="  Generating"):
-        batch_prompts = prompts[i : i + BATCH_SIZE]
+        batch_prompts = prompts[i: i + BATCH_SIZE]
         inputs = tokenizer(
             batch_prompts,
             return_tensors="pt",
@@ -136,111 +161,116 @@ def generate_translations(model, tokenizer, prompts: list) -> list:
         ).to(model.device)
 
         with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=MAX_NEW_TOKENS,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
+            if is_qwen:
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    do_sample=False,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    enable_thinking=False, # no generation for qwen
+                )
+            else:
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    do_sample=False,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
 
-        for output in outputs:
+        for j, output in enumerate(outputs):
             prompt_len = inputs["input_ids"].shape[1]
-            generated = output[prompt_len:]
-            decoded = tokenizer.decode(generated, skip_special_tokens=True).strip()
+            generated  = output[prompt_len:]
+            decoded    = tokenizer.decode(generated, skip_special_tokens=True).strip()
             hypotheses.append(decoded)
 
     return hypotheses
 
 
-def compute_bleu(hypotheses: list, references: list) -> float:
-    result = sacrebleu.corpus_bleu(hypotheses, [references])
-    return round(result.score, 4)
+def compute_bleu(hypotheses, references):
+    return round(sacrebleu.corpus_bleu(hypotheses, [references]).score, 4)
 
 
-def compute_chrf(hypotheses: list, references: list) -> float:
-    result = sacrebleu.corpus_chrf(hypotheses, [references])
-    return round(result.score, 4)
+def compute_chrf(hypotheses, references):
+    return round(sacrebleu.corpus_chrf(hypotheses, [references]).score, 4)
 
 
-def compute_comet_da(sources: list, hypotheses: list, references: list) -> float:
+def compute_comet_da(sources, hypotheses, references):
     print(f"  Loading COMET model: {COMET_REF_MODEL}")
     comet_path  = download_model(COMET_REF_MODEL)
     comet_model = load_from_checkpoint(comet_path)
-    data = [{"src": s, "mt": h, "ref": r}
-            for s, h, r in zip(sources, hypotheses, references)]
+    data   = [{"src": s, "mt": h, "ref": r}
+               for s, h, r in zip(sources, hypotheses, references)]
     output = comet_model.predict(data, batch_size=16, gpus=1)
     del comet_model
     torch.cuda.empty_cache()
     return round(output.system_score, 4)
 
 
-def print_summary(results: dict):
+def print_summary(model_key: str, results: dict):
     print("\n" + "=" * 65)
-    print("  EVALUATION SUMMARY — DPO Qwen3 — Validation Set")
+    print(f"  EVALUATION SUMMARY — DPO {model_key} terms — Validation Set")
     print("=" * 65)
     print(f"{'Model':<20} {'BLEU':>8} {'ChrF':>8} {'COMET-DA':>10}")
     print("-" * 65)
     for ckpt, scores in results.items():
-        bleu     = scores.get("bleu", "—")
-        chrf     = scores.get("chrf", "—")
-        comet_da = scores.get("comet_wmt22", "—")
-        print(f"{ckpt:<20} {str(bleu):>8} {str(chrf):>8} {str(comet_da):>10}")
+        print(f"{ckpt:<20} {str(scores.get('bleu','—')):>8} "
+              f"{str(scores.get('chrf','—')):>8} "
+              f"{str(scores.get('comet_wmt22','—')):>10}")
     print("=" * 65)
 
 
 def main():
-    print("Loading validation data...")
-    sources, references, prompts = load_val_data(VAL_FILE)
+    args   = parse_args()
+    cfg    = MODEL_CONFIGS[args.model]
+    merged = cfg["merged"]
+    is_qwen = cfg["is_qwen"]
+
+    out_dir     = f"{MODELS_DIR}/{cfg['stem']}_eval_results"
+    scores_file = f"{out_dir}/val_scores_dpo.json"
+    checkpoints = checkpoint_paths(cfg["stem"])
+
+    missing = [p for p in checkpoints.values() if not os.path.isdir(p)]
+    if missing:
+        raise SystemExit(f"Missing checkpoint directories:\n" + "\n".join(missing))
+
+    print(f"Evaluating {args.model} (terms) — {len(checkpoints)} beta runs")
+    print(f"Loading validation data from: {cfg['val_file']}")
+    sources, references, prompts = load_val_data(cfg["val_file"], is_qwen)
     print(f"  {len(prompts)} examples loaded.")
 
-    results = load_existing_scores()
+    results = load_existing_scores(scores_file)
 
-    for ckpt_name, ckpt_path in CHECKPOINTS.items():
-        print(f"\n{'='*50}")
-        print(f"  Evaluating: {ckpt_name}")
-        print(f"{'='*50}")
-
+    for ckpt_name, ckpt_path in checkpoints.items():
+        print(f"\n{'='*50}\n  Evaluating: {ckpt_name}\n{'='*50}")
         ckpt_scores = results.get(ckpt_name, {})
 
-        hypotheses = load_existing_hypotheses(ckpt_name)
+        hypotheses = load_existing_hypotheses(out_dir, ckpt_name)
         if hypotheses is None:
-            model, tokenizer = load_model_and_tokenizer(ckpt_path)
-            hypotheses = generate_translations(model, tokenizer, prompts)
-            save_hypotheses(ckpt_name, hypotheses)
+            model, tokenizer = load_model_and_tokenizer(merged, ckpt_path)
+            hypotheses = generate_translations(model, tokenizer, prompts, is_qwen)
+            save_hypotheses(out_dir, ckpt_name, hypotheses)
             del model
             torch.cuda.empty_cache()
         else:
-            print("  Skipping generation.")
+            print("  Skipping generation (cached).")
 
-        if "bleu" not in ckpt_scores:
-            print("  Computing BLEU...")
-            ckpt_scores["bleu"] = compute_bleu(hypotheses, references)
-            print(f"  BLEU: {ckpt_scores['bleu']}")
-            results[ckpt_name] = ckpt_scores
-            save_scores(results)
-        else:
-            print(f"  BLEU already computed: {ckpt_scores['bleu']} — skipping.")
+        for metric, compute_fn, kwargs in [
+            ("bleu",       compute_bleu,     dict(hypotheses=hypotheses, references=references)),
+            ("chrf",       compute_chrf,     dict(hypotheses=hypotheses, references=references)),
+            ("comet_wmt22",compute_comet_da, dict(sources=sources, hypotheses=hypotheses, references=references)),
+        ]:
+            if metric not in ckpt_scores:
+                print(f"  Computing {metric.upper()}...")
+                ckpt_scores[metric] = compute_fn(**kwargs)
+                print(f"  {metric.upper()}: {ckpt_scores[metric]}")
+                results[ckpt_name] = ckpt_scores
+                save_scores(scores_file, results)
+            else:
+                print(f"  {metric.upper()} already computed: {ckpt_scores[metric]} — skipping.")
 
-        if "chrf" not in ckpt_scores:
-            print("  Computing ChrF...")
-            ckpt_scores["chrf"] = compute_chrf(hypotheses, references)
-            print(f"  ChrF: {ckpt_scores['chrf']}")
-            results[ckpt_name] = ckpt_scores
-            save_scores(results)
-        else:
-            print(f"  ChrF already computed: {ckpt_scores['chrf']} — skipping.")
-
-        if "comet_wmt22" not in ckpt_scores:
-            print("  Computing COMET-DA (wmt22-comet-da)...")
-            ckpt_scores["comet_wmt22"] = compute_comet_da(sources, hypotheses, references)
-            print(f"  COMET-DA: {ckpt_scores['comet_wmt22']}")
-            results[ckpt_name] = ckpt_scores
-            save_scores(results)
-        else:
-            print(f"  COMET-DA already computed: {ckpt_scores['comet_wmt22']} — skipping.")
-
-    print_summary(results)
+    print_summary(args.model, results)
 
 
 if __name__ == "__main__":

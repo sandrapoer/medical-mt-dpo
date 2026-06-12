@@ -19,11 +19,9 @@ MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 MODEL_NAME = "mistralai/Ministral-8B-Instruct-2410"
 OUTPUT_DIR = f"{MODEL_PATH}/SFT_Ministral_final"
 
-
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, padding_side="left", trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -40,7 +38,6 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model = prepare_model_for_kbit_training(model)
 
-# wiht optuna best hyperparameters
 lora_config = LoraConfig(
     r=8,
     lora_alpha=64,
@@ -52,13 +49,12 @@ lora_config = LoraConfig(
 model = get_peft_model(model, lora_config)
 model.print_trainable_parameters()
 
-
 dataset = load_dataset(
     "json",
     data_files={
         "train": f"{PROCESSED_PATH}/train/messages_train.jsonl",
         "validation": f"{PROCESSED_PATH}/val/messages_val.jsonl",
-    }
+    },
 )
 
 
@@ -68,7 +64,7 @@ def tokenize(example):
     asst_msg = next(m for m in messages if m["role"] == "assistant")
     # Ministral format: <s>[INST]user[/INST]assistant</s>
     text = f"<s>[INST]{user_msg['content']}[/INST]{asst_msg['content']}</s>"
-    return tokenizer(text, truncation=True, max_length=512)
+    return tokenizer(text, truncation=True, max_length=512, add_special_tokens=False)
 
 
 tokenized = dataset.map(tokenize, remove_columns=dataset["train"].column_names)
@@ -95,31 +91,33 @@ class CompletionOnlyCollator:
 
         attention_mask = (input_ids != self.pad_token_id).long()
         labels = input_ids.clone()
+        n = len(self.response_token_ids)
 
         for i, label_seq in enumerate(labels):
             seq = label_seq.tolist()
             response_start = None
-            for j in range(len(seq) - len(self.response_token_ids) + 1):
-                if seq[j : j + len(self.response_token_ids)] == self.response_token_ids:
-                    response_start = j + len(self.response_token_ids)
+            for j in range(len(seq) - n + 1):
+                if seq[j : j + n] == self.response_token_ids:
+                    response_start = j + n
                     break
             if response_start is not None:
                 labels[i, :response_start] = -100
             else:
-                labels[i, :] = -100
+                raise RuntimeError(
+                    "Response template not found in an example — completion "
+                    "masking would null the whole sequence. Check that "
+                    f"encode('[/INST]')={self.response_token_ids} matches how "
+                    "'[/INST]' tokenizes inside the training text. "
+                    "(If a source sentence exceeds max_length, truncation may "
+                    "have cut the template; raise max_length.)"
+                )
 
         labels[input_ids == self.pad_token_id] = -100
-
-        return {
-            "input_ids":      input_ids,
-            "attention_mask": attention_mask,
-            "labels":         labels,
-        }
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
 
 collator = CompletionOnlyCollator(tokenizer)
 
-# with optuna best hyperparameters
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     num_train_epochs=3,
