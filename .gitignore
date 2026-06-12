@@ -8,6 +8,8 @@ experiments/
 __pycache__/
 *.pyc
 venv/
+py_files.zip
+diagnose_beta_contamination.py
 
 # Model and Checkpoints
 models/
