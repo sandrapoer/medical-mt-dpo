@@ -10,6 +10,9 @@ __pycache__/
 venv/
 py_files.zip
 diagnose_beta_contamination.py
+diagnose_chat_template.py
+emea_test.py
+
 
 # Model and Checkpoints
 models/

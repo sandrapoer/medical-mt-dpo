@@ -27,6 +27,17 @@ SPLITS = [
         "msgs":    DATA_PROCESSED_DIR / "val/messages_val.jsonl",
         "output":  DATA_PROCESSED_DIR / "val/messages_val_terms.jsonl",
     },
+    {
+        "en":     DATA_PROCESSED_DIR / "test_emea/test.en",
+        "msgs":   DATA_PROCESSED_DIR / "test_emea/messages_test.jsonl",
+        "output": DATA_PROCESSED_DIR / "test_emea/messages_test_terms.jsonl",
+    },
+    
+    {
+        "en":     DATA_PROCESSED_DIR / "test/test.en",
+        "msgs":   DATA_PROCESSED_DIR / "test/messages_test.jsonl",
+        "output": DATA_PROCESSED_DIR / "test/messages_test_terms.jsonl",
+    },
 ]
 
 PLAIN_INSTRUCTION = (
