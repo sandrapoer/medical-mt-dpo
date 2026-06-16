@@ -1,30 +1,7 @@
-"""Unified final test evaluation — TICO-19 + EMEA in-domain.
-
-Evaluates all valid systems on both test sets:
-  SFT plain      : Tower, Qwen3, Ministral (negative baseline)
-  SFT terms      : Tower, Qwen3, Ministral (negative baseline)
-  DPO terms β=0.01: Tower, Qwen3, Ministral (negative baseline)
-
-Only the best SFT checkpoint per model is evaluated (determined from val set).
-DPO systems load the merged SFT base + DPO LoRA adapter at β=0.01 root dir.
-
-Usage
------
-    # TICO-19 (out-of-domain)
-    CUDA_VISIBLE_DEVICES=1 python py_files/final_evaluation.py --test tico
-
-    # EMEA (in-domain)
-    CUDA_VISIBLE_DEVICES=2 python py_files/final_evaluation.py --test emea
-
-Run one test set at a time — each takes several hours due to COMET.
-Results saved with resume logic so crashes are recoverable.
-"""
-
 import os
 import gc
 import json
 import argparse
-
 import torch
 import sacrebleu
 from dotenv import load_dotenv
@@ -34,80 +11,66 @@ from peft import PeftModel
 from comet import download_model, load_from_checkpoint
 
 load_dotenv()
-PROC      = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
-MODELS    = os.getenv("MODELS_DIR").rstrip("/")
+PROC = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
+MODELS = os.getenv("MODELS_DIR").rstrip("/")
 
-COMET_MODEL  = "Unbabel/wmt22-comet-da"
+COMET_MODEL = "Unbabel/wmt22-comet-da"
 MAX_NEW_TOKENS = 256
-BATCH_SIZE     = 8
+BATCH_SIZE = 8
 
-# --------------------------------------------------------------------------- #
-# System registry
-# Each entry: base model HF name, adapter path, merged path (for DPO),
-# prompt style, whether to suppress Qwen3 thinking.
-# --------------------------------------------------------------------------- #
 SYSTEMS = {
-    # ---- Tower ----
+    # Tower
     "tower_sft_plain": dict(
-        base="Unbabel/TowerInstruct-7B-v0.2",
-        adapter=f"{MODELS}/SFT_TowerInstruct_final/checkpoint-1250",
+        adapter=f"{MODELS}/SFT_TowerInstruct_merged",
         merged=None,
         style="chatml", is_qwen=False,
         data="plain",
     ),
     "tower_sft_terms": dict(
-        base="Unbabel/TowerInstruct-7B-v0.2",
-        adapter=f"{MODELS}/SFT_TowerInstruct_terms_merged",   # merged adapter
+        adapter=f"{MODELS}/SFT_TowerInstruct_terms_merged",
         merged=None,
         style="chatml", is_qwen=False,
         data="terms",
     ),
     "tower_dpo_terms": dict(
-        base=None,
         adapter=f"{MODELS}/DPO_TowerInstruct_terms_beta0.01",
         merged=f"{MODELS}/SFT_TowerInstruct_terms_merged",
         style="chatml", is_qwen=False,
         data="terms",
     ),
-    # ---- Qwen3 ----
+    # Qwen3
     "qwen_sft_plain": dict(
-        base="Qwen/Qwen3-8B",
-        adapter=f"{MODELS}/SFT_Qwen3_final/checkpoint-1250",
+        adapter=f"{MODELS}/SFT_Qwen3_merged",
         merged=None,
         style="chatml", is_qwen=True,
         data="plain",
     ),
     "qwen_sft_terms": dict(
-        base="Qwen/Qwen3-8B",
-        adapter=f"{MODELS}/SFT_Qwen3_terms/checkpoint-1875",
+        adapter=f"{MODELS}/SFT_Qwen3_terms_merged",
         merged=None,
         style="chatml", is_qwen=True,
         data="terms",
     ),
     "qwen_dpo_terms": dict(
-        base=None,
         adapter=f"{MODELS}/DPO_Qwen3_terms_beta0.01",
         merged=f"{MODELS}/SFT_Qwen3_terms_merged",
         style="chatml", is_qwen=True,
         data="terms",
     ),
-    # ---- Ministral (negative baseline) ----
+    # Ministral
     "ministral_sft_plain": dict(
-        base="mistralai/Ministral-8B-Instruct-2410",
-        adapter=f"{MODELS}/SFT_Ministral_final/checkpoint-1875",
+        adapter=f"{MODELS}/SFT_Ministral_merged",
         merged=None,
         style="ministral", is_qwen=False,
         data="plain",
     ),
     "ministral_sft_terms": dict(
-        base="mistralai/Ministral-8B-Instruct-2410",
-        adapter=f"{MODELS}/SFT_Ministral_terms/checkpoint-1875",
+        adapter=f"{MODELS}/SFT_Ministral_terms_merged",
         merged=None,
         style="ministral", is_qwen=False,
         data="terms",
     ),
     "ministral_dpo_terms": dict(
-        base=None,
         adapter=f"{MODELS}/DPO_Ministral_terms_beta0.01",
         merged=f"{MODELS}/SFT_Ministral_terms_merged",
         style="ministral", is_qwen=False,
@@ -115,9 +78,6 @@ SYSTEMS = {
     ),
 }
 
-# --------------------------------------------------------------------------- #
-# Test set paths
-# --------------------------------------------------------------------------- #
 TEST_FILES = {
     "tico": {
         "plain": f"{PROC}/test/messages_test.jsonl",
@@ -133,14 +93,10 @@ TEST_FILES = {
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--test", required=True, choices=["tico", "emea"])
-    p.add_argument("--systems", nargs="+", default=None,
-                   help="Subset of system keys to run (default: all)")
+    p.add_argument("--systems", nargs="+", default=None)
     return p.parse_args()
 
 
-# --------------------------------------------------------------------------- #
-# Data loading
-# --------------------------------------------------------------------------- #
 def load_test_data(path: str):
     sources, references, prompts = [], [], []
     with open(path, encoding="utf-8") as f:
@@ -166,9 +122,6 @@ def build_prompt(content: str, style: str) -> str:
     return f"<|im_start|>user\n{content}<|im_end|>\n<|im_start|>assistant\n"
 
 
-# --------------------------------------------------------------------------- #
-# Model loading
-# --------------------------------------------------------------------------- #
 def bnb():
     return BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4",
@@ -178,25 +131,33 @@ def bnb():
 
 def load_system(sys_cfg: dict):
     is_dpo = sys_cfg["merged"] is not None
-    base_path = sys_cfg["merged"] if is_dpo else sys_cfg["base"]
 
-    tok = AutoTokenizer.from_pretrained(
-        base_path, trust_remote_code=True, padding_side="left"
-    )
-    tok.pad_token = tok.eos_token
+    if is_dpo:
+        base_path = sys_cfg["merged"]
+        tok = AutoTokenizer.from_pretrained(
+            base_path, trust_remote_code=True, padding_side="left"
+        )
+        tok.pad_token = tok.eos_token
+        base = AutoModelForCausalLM.from_pretrained(
+            base_path, quantization_config=bnb(),
+            device_map={"": 0}, trust_remote_code=True,
+        )
+        model = PeftModel.from_pretrained(base, sys_cfg["adapter"])
+    else:
+        base_path = sys_cfg["adapter"]
+        tok = AutoTokenizer.from_pretrained(
+            base_path, trust_remote_code=True, padding_side="left"
+        )
+        tok.pad_token = tok.eos_token
+        model = AutoModelForCausalLM.from_pretrained(
+            base_path, quantization_config=bnb(),
+            device_map={"": 0}, trust_remote_code=True,
+        )
 
-    base = AutoModelForCausalLM.from_pretrained(
-        base_path, quantization_config=bnb(),
-        device_map={"": 0}, trust_remote_code=True,
-    )
-    model = PeftModel.from_pretrained(base, sys_cfg["adapter"])
     model.eval()
     return model, tok
 
 
-# --------------------------------------------------------------------------- #
-# Generation
-# --------------------------------------------------------------------------- #
 def generate(model, tokenizer, prompts, style, is_qwen):
     hypotheses = []
     formatted  = [build_prompt(p, style) for p in prompts]
@@ -211,21 +172,18 @@ def generate(model, tokenizer, prompts, style, is_qwen):
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
-        if is_qwen:
-            kw["enable_thinking"] = False
         with torch.no_grad():
             outputs = model.generate(**inputs, **kw)
         for out in outputs:
-            gen = out[inputs["input_ids"].shape[1]:]
-            hypotheses.append(
-                tokenizer.decode(gen, skip_special_tokens=True).strip()
-            )
+            gen     = out[inputs["input_ids"].shape[1]:]
+            decoded = tokenizer.decode(gen, skip_special_tokens=True).strip()
+            # Strip Qwen3 think blocks if present.
+            if is_qwen and "<think>" in decoded:
+                decoded = decoded.split("</think>")[-1].strip()
+            hypotheses.append(decoded)
     return hypotheses
 
 
-# --------------------------------------------------------------------------- #
-# Metrics
-# --------------------------------------------------------------------------- #
 def bleu(hyps, refs):
     return round(sacrebleu.corpus_bleu(hyps, [refs]).score, 4)
 
@@ -241,9 +199,6 @@ def comet_da(srcs, hyps, refs):
     return round(score, 4)
 
 
-# --------------------------------------------------------------------------- #
-# I/O helpers
-# --------------------------------------------------------------------------- #
 def hyp_path(out_dir, sys_name):
     return f"{out_dir}/hypotheses_{sys_name}.jsonl"
 
@@ -271,9 +226,6 @@ def save_scores(scores_file, results):
         json.dump(results, f, indent=2)
 
 
-# --------------------------------------------------------------------------- #
-# Summary
-# --------------------------------------------------------------------------- #
 def print_summary(test_name, results):
     print("\n" + "=" * 70)
     print(f"  FINAL TEST RESULTS — {test_name.upper()}")
@@ -288,9 +240,6 @@ def print_summary(test_name, results):
     print("=" * 70)
 
 
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
 def main():
     args     = parse_args()
     out_dir  = f"{MODELS}/final_eval_results/{args.test}"
@@ -303,19 +252,16 @@ def main():
         if sys_name not in SYSTEMS:
             print(f"Unknown system {sys_name!r} — skipping.")
             continue
-        cfg      = SYSTEMS[sys_name]
-        data_key = cfg["data"]            # "plain" or "terms"
-        data_f   = TEST_FILES[args.test][data_key]
+        cfg    = SYSTEMS[sys_name]
+        data_f = TEST_FILES[args.test][cfg["data"]]
 
         if not os.path.isfile(data_f):
             print(f"\n[{sys_name}] test file not found: {data_f} — skipping.")
-            print("  (Run make_tico_messages.py or term_instructions.py first.)")
             continue
 
         print(f"\n{'='*60}\n  {sys_name}  [{args.test}]\n{'='*60}")
         sys_scores = results.get(sys_name, {})
 
-        # Generation
         hyps = load_hyps(out_dir, sys_name)
         if hyps is None:
             srcs, refs, prompts = load_test_data(data_f)
@@ -327,7 +273,6 @@ def main():
             srcs, refs, _ = load_test_data(data_f)
             print("  Loaded cached hypotheses.")
 
-        # Metrics
         for metric, fn, kw in [
             ("bleu",        bleu,     dict(hyps=hyps, refs=refs)),
             ("chrf",        chrf,     dict(hyps=hyps, refs=refs)),
