@@ -12,6 +12,7 @@ py_files.zip
 diagnose_beta_contamination.py
 diagnose_chat_template.py
 emea_test.py
+sample_data.zip
 
 
 # Model and Checkpoints
