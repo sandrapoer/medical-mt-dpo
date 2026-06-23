@@ -13,7 +13,9 @@ diagnose_beta_contamination.py
 diagnose_chat_template.py
 emea_test.py
 sample_data.zip
-
+find_synonym_example.py
+score_terms_systems.py
+tex/
 
 # Model and Checkpoints
 models/
