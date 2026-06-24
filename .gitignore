@@ -16,7 +16,8 @@ sample_data.zip
 find_synonym_example.py
 score_terms_systems.py
 tex/
-
+data_backup.zip
+qwenMT.txt
 # Model and Checkpoints
 models/
 MT-Preparation/
