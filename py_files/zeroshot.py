@@ -105,8 +105,8 @@ def main(src_id, trg_id, access_token, model_id, model_name, cuda, json_file, mt
 
     for output in (outputs):
         mt = output[0] ["generated_text"]
-        print(mt, 
-              file=mt_output)
+        mt_clean = mt.replace("\n", " ").strip()
+        print(mt_clean, file=mt_output)
     #output = [prompt, src, trg] #"\n".join(hypotheses)
     #output.extend(hypotheses)
     #print(output)

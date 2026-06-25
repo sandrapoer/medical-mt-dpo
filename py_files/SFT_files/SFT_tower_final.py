@@ -17,15 +17,11 @@ PROCESSED_PATH = os.getenv("DATA_PROCESSED_DIR").rstrip("/")
 MODEL_PATH = os.getenv("MODELS_DIR").rstrip("/")
 
 MODEL_NAME = "Unbabel/TowerInstruct-7B-v0.2"
-OUTPUT_DIR = f"{MODEL_PATH}/SFT_TowerInstruct_final"
+OUTPUT_DIR = f"{MODEL_PATH}/SFT_TowerInstruct_supervisor"
 
-
-# Tokenizer
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, padding_side="left", trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
 
-
-# Model (4-bit QLoRA)
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
@@ -41,21 +37,18 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model = prepare_model_for_kbit_training(model)
 
-
-# LoRA — best params from Optuna (TRL Trial 11)
+# supervisor config: r=64, alpha=16, dropout=0.1
 lora_config = LoraConfig(
-    r=8,
-    lora_alpha=64,
+    r=64,
+    lora_alpha=16,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    lora_dropout=0.05,
+    lora_dropout=0.1,
     bias="none",
     task_type="CAUSAL_LM",
 )
 model = get_peft_model(model, lora_config)
 model.print_trainable_parameters()
 
-
-# Dataset
 dataset = load_dataset(
     "json",
     data_files={
@@ -64,12 +57,10 @@ dataset = load_dataset(
     }
 )
 
-
 def tokenize(example):
     messages = example["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     asst_msg = next(m for m in messages if m["role"] == "assistant")
-
     text = (
         f"<|im_start|>user\n{user_msg['content']}<|im_end|>\n"
         f"<|im_start|>assistant\n{asst_msg['content']}<|im_end|>"
@@ -90,17 +81,14 @@ class CompletionOnlyCollator:
     def __call__(self, batch):
         input_ids_list = [torch.tensor(x["input_ids"]) for x in batch]
         max_len = max(t.size(0) for t in input_ids_list)
-
         input_ids = torch.stack([
             torch.nn.functional.pad(
                 t, (max_len - t.size(0), 0), value=self.pad_token_id
             )
             for t in input_ids_list
         ])
-
         attention_mask = (input_ids != self.pad_token_id).long()
         labels = input_ids.clone()
-
         for i, label_seq in enumerate(labels):
             seq = label_seq.tolist()
             response_start = None
@@ -112,35 +100,27 @@ class CompletionOnlyCollator:
                 labels[i, :response_start] = -100
             else:
                 labels[i, :] = -100
-
         labels[input_ids == self.pad_token_id] = -100
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
 
 collator = CompletionOnlyCollator(tokenizer)
 
-
+# supervisor config: 2 epochs, batch 2, grad accum 2, LR 2e-5, warmup_ratio 0.03
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
-    num_train_epochs=3,
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=4,
-    gradient_accumulation_steps=4,
-    eval_accumulation_steps=4,
-    # Best params from Optuna TRL Trial 11
-    learning_rate=0.00040183357574217137,
-    warmup_steps=50,
+    num_train_epochs=2,
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,
+    gradient_accumulation_steps=2,
+    learning_rate=2e-5,
+    warmup_ratio=0.03,
     lr_scheduler_type="cosine",
     bf16=True,
     logging_steps=10,
     eval_strategy="epoch",
     save_strategy="epoch",
-    save_total_limit=3,
+    save_total_limit=2,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     greater_is_better=False,

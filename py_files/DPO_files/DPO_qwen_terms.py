@@ -56,10 +56,9 @@ dpo_dataset = Dataset.from_list(dataset1)
 
 #print(f"Train: {len(dataset['train'])} pairs | Eval: {len(dataset['test'])} pairs")
 
-# for BETA in [0.01, 0.05, 0.1, 0.5]:
-OUTPUT_DIR = f"{MODEL_PATH}/DPO_Qwen3_restructured_beta_0.01"
+OUTPUT_DIR = f"{MODEL_PATH}/DPO_Qwen3_restructured_beta_0.01_3epochs"
 
-dpo_config = DPOConfig(output_dir=OUTPUT_DIR, beta=0.01, num_train_epochs=1,
+dpo_config = DPOConfig(output_dir=OUTPUT_DIR, beta=0.01, num_train_epochs=3,
     per_device_train_batch_size=2, per_device_eval_batch_size=2,
     gradient_accumulation_steps=8, gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
     learning_rate=5e-6, lr_scheduler_type="cosine",
