@@ -15,8 +15,7 @@ from transformers import pipeline
 from itertools import islice
 
 def main(src_id, trg_id, access_token, model_id, model_name, cuda, json_file, mt_output_file):
-   
-    max_length = 2048 #128
+    max_length = 128
     size = 15
     n_samples = 1
     temperature = 0.6 #0.3
