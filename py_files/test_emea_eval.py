@@ -3,7 +3,7 @@ from comet import download_model, load_from_checkpoint
 src = open("data/processed/test_emea/test.en").read().splitlines()
 ref = open("data/processed/test_emea/test.fr").read().splitlines()
 hyp_files = {
-    "sft_tower":        "models/sft_tower_emea.txt",
+    "sft_tower":        "data/processed/test/messages_test_emea.tower.fr.txt",
     "sft_qwen":         "models/sft_qwen_emea.txt",
     "sft_ministral":    "models/sft_ministral_emea.txt",
     "sft_terms_tower":     "models/sft_terms_tower_emea.txt",

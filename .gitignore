@@ -1,6 +1,7 @@
 data/raw/
 data/processed/
 data/glossary/
+data/
 .env
 experiments/
 .ipynb_checkpoints/
