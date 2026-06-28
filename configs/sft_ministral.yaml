@@ -1,0 +1,29 @@
+# SFT configuration for Ministral-8B-Instruct-2410
+# Hyperparameters selected with Optuna (15 trials, seed=42).
+# scripts/sft/hyperparameter_search.py -> Optuna 
+
+model:
+  name: "mistralai/Ministral-8B-Instruct-2410"
+  chat_style: "ministral" # <s>[INST]user[/INST]assistant</s>
+  add_special_tokens: false # <s> is already embedded in the text
+
+lora:
+  r: 8
+  lora_alpha: 64
+  target_modules: "all-linear"
+  lora_dropout: 0.05
+  bias: "none"
+
+training:
+  num_train_epochs: 3
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  eval_accumulation_steps: 4
+  learning_rate: 9.419e-05 # best Optuna trial
+  warmup_steps: 60 # best Optuna trial
+  warmup_ratio: null
+  lr_scheduler_type: "cosine"
+  max_length: 512
+  seed: 42
+  save_total_limit: 3

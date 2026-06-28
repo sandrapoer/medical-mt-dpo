@@ -1,0 +1,29 @@
+# SFT configuration for TowerInstruct-7B-v0.2
+# Hyperparameters selected with  Optuna (15 trials, seed=42).
+# scripts/sft/hyperparameter_search.py -> Optuna 
+
+model:
+  name: "Unbabel/TowerInstruct-7B-v0.2"
+  chat_style: "chatml" # <|im_start|>user ... <|im_start|>assistant
+  add_special_tokens: true
+
+lora:
+  r: 64
+  lora_alpha: 16
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  lora_dropout: 0.1
+  bias: "none"
+
+training:
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 2
+  eval_accumulation_steps: null
+  learning_rate: 2.0e-05 # best Optuna trial
+  warmup_steps: null
+  warmup_ratio: 0.03 # best Optuna trial
+  lr_scheduler_type: "cosine"
+  max_length: 512
+  seed: 42
+  save_total_limit: 2

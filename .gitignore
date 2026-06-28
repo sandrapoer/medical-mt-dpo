@@ -1,24 +1,7 @@
-data/raw/
-data/processed/
-data/glossary/
 data/
 .env
-experiments/
-.ipynb_checkpoints/
-*.log
-__pycache__/
-*.pyc
-venv/
-py_files.zip
-diagnose_beta_contamination.py
-diagnose_chat_template.py
-emea_test.py
-sample_data.zip
-find_synonym_example.py
-score_terms_systems.py
-tex/
-data_backup.zip
-qwenMT.txt
+testllm/ 
+
 # Model and Checkpoints
 models/
 MT-Preparation/

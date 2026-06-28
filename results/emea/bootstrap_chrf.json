@@ -1,0 +1,83 @@
+[
+  {
+    "comparison": "Tower: SFT baseline vs SFT terms",
+    "system_a": "tower_sft_plain",
+    "system_b": "tower_sft_terms",
+    "score_a": 41.08194412544213,
+    "score_b": 39.78897382506419,
+    "p_value": 0.001998001998001998,
+    "significant": true
+  },
+  {
+    "comparison": "Tower: SFT terms vs DPO terms",
+    "system_a": "tower_sft_terms",
+    "system_b": "tower_dpo_terms",
+    "score_a": 39.78897382506419,
+    "score_b": 39.9432048163757,
+    "p_value": 0.056943056943056944,
+    "significant": false
+  },
+  {
+    "comparison": "Tower: SFT baseline vs DPO terms",
+    "system_a": "tower_sft_plain",
+    "system_b": "tower_dpo_terms",
+    "score_a": 41.08194412544213,
+    "score_b": 39.9432048163757,
+    "p_value": 0.001998001998001998,
+    "significant": true
+  },
+  {
+    "comparison": "Qwen3: SFT baseline vs SFT terms",
+    "system_a": "qwen_sft_plain",
+    "system_b": "qwen_sft_terms",
+    "score_a": 70.78043274134683,
+    "score_b": 70.83462781220823,
+    "p_value": 0.33266733266733267,
+    "significant": false
+  },
+  {
+    "comparison": "Qwen3: SFT terms vs DPO terms",
+    "system_a": "qwen_sft_terms",
+    "system_b": "qwen_dpo_terms",
+    "score_a": 70.83462781220823,
+    "score_b": 70.85098884759998,
+    "p_value": 0.23076923076923078,
+    "significant": false
+  },
+  {
+    "comparison": "Qwen3: SFT baseline vs DPO terms",
+    "system_a": "qwen_sft_plain",
+    "system_b": "qwen_dpo_terms",
+    "score_a": 70.78043274134683,
+    "score_b": 70.85098884759998,
+    "p_value": 0.3066933066933067,
+    "significant": false
+  },
+  {
+    "comparison": "Ministral: SFT baseline vs SFT terms",
+    "system_a": "ministral_sft_plain",
+    "system_b": "ministral_sft_terms",
+    "score_a": 40.09101487492146,
+    "score_b": 37.72639191555498,
+    "p_value": 0.000999000999000999,
+    "significant": true
+  },
+  {
+    "comparison": "Ministral: SFT terms vs DPO terms",
+    "system_a": "ministral_sft_terms",
+    "system_b": "ministral_dpo_terms",
+    "score_a": 37.72639191555498,
+    "score_b": 37.60144263011595,
+    "p_value": 0.1108891108891109,
+    "significant": false
+  },
+  {
+    "comparison": "Ministral: SFT baseline vs DPO terms",
+    "system_a": "ministral_sft_plain",
+    "system_b": "ministral_dpo_terms",
+    "score_a": 40.09101487492146,
+    "score_b": 37.60144263011595,
+    "p_value": 0.000999000999000999,
+    "significant": true
+  }
+]

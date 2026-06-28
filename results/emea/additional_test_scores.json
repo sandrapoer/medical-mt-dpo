@@ -1,0 +1,7 @@
+{
+  "additional_test_qwen_sft": {
+    "bleu": 36.0468,
+    "chrf": 63.1754,
+    "comet_wmt22": 0.8435
+  }
+}

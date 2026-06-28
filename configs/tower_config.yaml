@@ -1,8 +1,0 @@
-model:
-name: "Unbabel/TowerInstruct-v0.2"
-max_length: 512
-
-data:
- train_path: "data/processed/train.csv"
- val_path: "data/processed/val.csv"
- test_path: "data/processed/test.csv"

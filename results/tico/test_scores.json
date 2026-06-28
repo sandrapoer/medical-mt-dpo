@@ -1,0 +1,47 @@
+{
+  "tower_sft_plain": {
+    "bleu": 8.0605,
+    "chrf": 43.3942,
+    "comet_wmt22": 0.3383
+  },
+  "tower_sft_terms": {
+    "bleu": 8.5188,
+    "chrf": 43.6066,
+    "comet_wmt22": 0.4062
+  },
+  "tower_dpo_terms": {
+    "bleu": 8.5541,
+    "chrf": 43.7654,
+    "comet_wmt22": 0.4061
+  },
+  "qwen_sft_plain": {
+    "bleu": 31.5529,
+    "chrf": 56.2198,
+    "comet_wmt22": 0.7841
+  },
+  "qwen_sft_terms": {
+    "bleu": 31.448,
+    "chrf": 56.3448,
+    "comet_wmt22": 0.7819
+  },
+  "qwen_dpo_terms": {
+    "bleu": 31.2852,
+    "chrf": 56.3007,
+    "comet_wmt22": 0.7818
+  },
+  "ministral_sft_plain": {
+    "bleu": 6.7133,
+    "chrf": 42.3291,
+    "comet_wmt22": 0.3873
+  },
+  "ministral_sft_terms": {
+    "bleu": 6.7709,
+    "chrf": 39.1891,
+    "comet_wmt22": 0.423
+  },
+  "ministral_dpo_terms": {
+    "bleu": 6.7984,
+    "chrf": 39.3001,
+    "comet_wmt22": 0.4269
+  }
+}

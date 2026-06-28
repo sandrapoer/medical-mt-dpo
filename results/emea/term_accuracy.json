@@ -1,0 +1,56 @@
+{
+  "tower_sft_terms": {
+    "term_recall": 41.73,
+    "term_precision": 15.74,
+    "term_f1": 22.86,
+    "sentence_recall": 31.93,
+    "total_injected_terms": 659,
+    "recall_hits": 275,
+    "sents_evaluated": 357
+  },
+  "tower_dpo_terms": {
+    "term_recall": 42.03,
+    "term_precision": 16.27,
+    "term_f1": 23.45,
+    "sentence_recall": 31.93,
+    "total_injected_terms": 659,
+    "recall_hits": 277,
+    "sents_evaluated": 357
+  },
+  "qwen_sft_terms": {
+    "term_recall": 41.58,
+    "term_precision": 24.31,
+    "term_f1": 30.68,
+    "sentence_recall": 30.53,
+    "total_injected_terms": 659,
+    "recall_hits": 274,
+    "sents_evaluated": 357
+  },
+  "qwen_dpo_terms": {
+    "term_recall": 41.58,
+    "term_precision": 24.31,
+    "term_f1": 30.68,
+    "sentence_recall": 30.53,
+    "total_injected_terms": 659,
+    "recall_hits": 274,
+    "sents_evaluated": 357
+  },
+  "ministral_sft_terms": {
+    "term_recall": 42.03,
+    "term_precision": 12.0,
+    "term_f1": 18.67,
+    "sentence_recall": 32.21,
+    "total_injected_terms": 659,
+    "recall_hits": 277,
+    "sents_evaluated": 357
+  },
+  "ministral_dpo_terms": {
+    "term_recall": 42.03,
+    "term_precision": 12.01,
+    "term_f1": 18.68,
+    "sentence_recall": 32.21,
+    "total_injected_terms": 659,
+    "recall_hits": 277,
+    "sents_evaluated": 357
+  }
+}
